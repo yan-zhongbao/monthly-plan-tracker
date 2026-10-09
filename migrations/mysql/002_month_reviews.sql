@@ -1,0 +1,8 @@
+CREATE TABLE IF NOT EXISTS month_reviews (
+ user_id INT NOT NULL,
+ month VARCHAR(7) NOT NULL,
+ completed TINYINT NOT NULL DEFAULT 0,
+ updated_at VARCHAR(40) NOT NULL,
+ source VARCHAR(32) NOT NULL,
+ PRIMARY KEY (user_id,month)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;

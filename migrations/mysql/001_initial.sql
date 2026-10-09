@@ -1,0 +1,50 @@
+CREATE TABLE IF NOT EXISTS items (
+ id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+ user_id INT NOT NULL,
+ month VARCHAR(7) NOT NULL,
+ title VARCHAR(480) NOT NULL,
+ category VARCHAR(20) NOT NULL,
+ note TEXT NOT NULL,
+ target INT NULL,
+ tracked TINYINT NOT NULL DEFAULT 0,
+ unplanned TINYINT NOT NULL DEFAULT 0,
+ completed TINYINT NOT NULL DEFAULT 0,
+ sort_order INT NOT NULL DEFAULT 0,
+ created_at VARCHAR(40) NOT NULL,
+ updated_at VARCHAR(40) NOT NULL,
+ INDEX items_month(user_id,month,sort_order,id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+CREATE TABLE IF NOT EXISTS records (
+ id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+ user_id INT NOT NULL,
+ item_id INT NOT NULL,
+ date VARCHAR(10) NOT NULL,
+ completed TINYINT NOT NULL DEFAULT 0,
+ note TEXT NOT NULL,
+ links TEXT NOT NULL,
+ source VARCHAR(32) NOT NULL,
+ manual_lock TINYINT NOT NULL DEFAULT 0,
+ revision INT NOT NULL DEFAULT 1,
+ updated_at VARCHAR(40) NOT NULL,
+ UNIQUE KEY records_unique(user_id,item_id,date),
+ INDEX records_dates(user_id,date),
+ FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+CREATE TABLE IF NOT EXISTS audit_log (
+ id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+ user_id INT NOT NULL,
+ action VARCHAR(40) NOT NULL,
+ entity_id INT NULL,
+ source VARCHAR(32) NOT NULL,
+ before_json MEDIUMTEXT NULL,
+ after_json MEDIUMTEXT NULL,
+ created_at VARCHAR(40) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+CREATE TABLE IF NOT EXISTS login_attempts (
+ ip_hash VARCHAR(64) NOT NULL PRIMARY KEY,
+ failures INT NOT NULL DEFAULT 0,
+ last_attempt BIGINT NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+CREATE TABLE IF NOT EXISTS user_write_locks (
+ user_id INT NOT NULL PRIMARY KEY
+) ENGINE=InnoDB;

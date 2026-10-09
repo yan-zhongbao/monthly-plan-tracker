@@ -1,0 +1,20 @@
+/.tools/
+/config.php
+/storage/*
+!/storage/.gitkeep
+/tests/tmp/
+/release/
+
+# Personal reference photos, screenshots and server notes stay local.
+/MVIMG_*.jpg
+/docs/previews/
+/docs/SERVER-DEPLOYMENT.md
+
+# Local secrets and generated artifacts.
+.env
+.env.*
+*.sqlite
+*.sqlite-*
+*.log
+*.pem
+*.key

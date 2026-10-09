@@ -1,0 +1,190 @@
+// Integration tests start a real PHP server against an isolated SQLite database.
+import assert from 'node:assert/strict';
+import {spawn,execFileSync} from 'node:child_process';
+import {mkdirSync} from 'node:fs';
+import {resolve} from 'node:path';
+import {setTimeout as pause} from 'node:timers/promises';
+const root=resolve(import.meta.dirname,'..');
+const php=process.env.PHP_BIN||resolve(root,'.tools/php/php.exe');
+const extensionArgs=process.platform==='win32'?['-d',`extension_dir=${resolve(php,'../ext')}`,'-d','extension=pdo_sqlite']:[];
+const folder=resolve(root,'tests/tmp',String(Date.now()));mkdirSync(folder,{recursive:true});
+const credentials=JSON.parse(execFileSync(php,[...extensionArgs,resolve(root,'tests/fixture.php'),folder],{encoding:'utf8'}));
+const port=18765,base=`http://127.0.0.1:${port}`;
+const env={...process.env,TRACKER_CONFIG:resolve(folder,'config.php')};
+const server=spawn(php,[...extensionArgs,'-S',`127.0.0.1:${port}`,'-t',resolve(root,'public')],{env,stdio:['ignore','pipe','pipe'],windowsHide:true});
+let stderr='';server.stderr.on('data',s=>stderr+=s);
+let assertions=0;
+function equal(actual,expected){assert.deepEqual(actual,expected);assertions++;}
+async function api(action,method='GET',payload=null,token=credentials.token1,query={month:'2026-10'}){
+  const response=await fetch(`${base}/api.php?${new URLSearchParams({action,...query})}`,{method,headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:payload===null?undefined:JSON.stringify(payload)});
+  return [response.status,await response.json()];
+}
+try{
+  for(let i=0;i<50;i++){try{await fetch(base);break;}catch{await pause(100);}}
+  equal((await fetch(base)).status,200);
+  equal((await api('month','GET',null,'bad-token'))[0],401);
+  equal((await api('month','GET',null,credentials.token1,{month:'2026-13'}))[0],400);
+  equal((await api('month'))[1].items.length,0);
+  let [status,result]=await api('items','POST',{month:'2026-10',title:'跑步',category:'健康',tracked:true,target:16});equal(status,201);const run=result.item.id;
+  equal(result.item.tracked,true);
+  equal((await api('items','POST',{month:'2026-10',title:'国庆旅行',category:'家庭',tracked:false}))[0],201);
+  equal((await api('projects'))[1].items.length,1);equal((await api('plans'))[1].items.length,2);
+  [status,result]=await api('records','PUT',{title:'跑步',date:'2026-10-08',completed:true});equal(status,200);equal(result.record.completed,true);equal(result.record.source,'openclaw');equal(result.record.revision,1);
+  equal((await api('records','PUT',{item_id:run,date:'2026-10-08',completed:true}))[0],200);
+  equal((await api('records'))[1].records.length,1);
+  equal((await api('records','PUT',{item_id:run,date:'2026-11-01',completed:true}))[0],400);
+  equal((await api('records','PUT',{item_id:run,date:'2026-10-32',completed:true}))[0],400);
+  equal((await api('records','PUT',{item_id:run,date:'2026-10-08',completed:'false'}))[0],400);
+  equal((await api('records','PUT',{item_id:run,date:'2026-10-08',links:['javascript:alert(1)']}))[0],400);
+  equal((await api('records','PUT',{item_id:run,date:'2026-10-08',links:{other:'https://example.com'}}))[0],400);
+  equal((await api('records','PUT',{item_id:run,date:'2026-10-08',links:{1:'https://example.com'}}))[0],400);
+  equal((await api('records','PUT',{item_id:run,date:'2026-10-08',revision:0}))[0],409);
+  [status,result]=await api('records','PUT',{item_id:run,date:'2026-10-08',note:'读完《测试书》',links:['https://example.com/detail']});equal(status,200);equal(result.record.completed,true);equal(result.record.links,['https://example.com/detail']);
+  [status,result]=await api('records','PUT',{item_id:run,date:'2026-10-08',links:[]});equal(status,200);equal(result.record.links,[]);
+  equal((await api('items','PATCH',{id:run,tracked:false}))[0],409);
+  equal((await api('items','PATCH',{id:run,month:'2026-11'}))[0],400);
+  equal((await api('items','PATCH',{id:run,target:0}))[0],400);
+  equal((await api('month','GET',null,credentials.token2))[1].items.length,0);
+  equal((await api('items','PATCH',{id:run,title:'侵入'},credentials.token2))[0],404);
+  equal((await api('records','PUT',{item_id:run,date:'2026-10-08'},credentials.token2))[0],404);
+  equal((await api('audit','GET',null,credentials.token2,{item_id:run}))[1].entries.length,0);
+  const page=await fetch(base),html=await page.text(),cookie=page.headers.get('set-cookie').split(';')[0];
+  const csrf=html.match(/name="csrf-token" content="([^"]+)"/)[1];
+  const login=await fetch(base,{method:'POST',redirect:'manual',headers:{Cookie:cookie,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({csrf,password:'notebook-preview-only'})});equal(login.status,302);
+  const sessionCookie=login.headers.get('set-cookie').split(';')[0];
+  const app=await fetch(base,{headers:{Cookie:sessionCookie}}),appHtml=await app.text();equal(appHtml.includes('tracker-table'),true);
+  const sessionCsrf=appHtml.match(/name="csrf-token" content="([^"]+)"/)[1];
+  const write=async(data,csrfHeader=sessionCsrf)=>{
+    const response=await fetch(`${base}/api.php?action=records`,{method:'PUT',headers:{Cookie:sessionCookie,'Content-Type':'application/json','X-CSRF-Token':csrfHeader},body:JSON.stringify(data)});return [response.status,await response.json()];
+  };
+  equal((await write({item_id:run,date:'2026-10-08',completed:false},'bad-csrf'))[0],403);
+  [status,result]=await write({item_id:run,date:'2026-10-08',completed:false,note:'手动修正'});equal(status,200);equal(result.record.manual_lock,true);equal(result.record.source,'manual');
+  equal((await api('records','PUT',{item_id:run,date:'2026-10-08',completed:true}))[0],409);
+  [status,result]=await api('records','PUT',{item_id:run,date:'2026-10-08',completed:true,force:true});equal(status,200);equal(result.record.note,'手动修正');equal(result.record.manual_lock,true);
+  equal((await write({item_id:run,date:'2026-10-08',manual_lock:false}))[0],200);
+  equal((await api('records','PUT',{item_id:run,date:'2026-10-08',completed:true}))[0],200);
+  const extra=await api('items','POST',{month:'2026-10',title:'临时见朋友',category:'社交',unplanned:true});equal(extra[1].item.tracked,true);
+  equal((await api('plans'))[1].items.length,2);
+  equal((await api('copy','POST',{from:'2026-10',to:'2026-11'}))[0],200);
+  const next=(await api('month','GET',null,credentials.token1,{month:'2026-11'}))[1];equal(next.items.length,2);equal(next.records.length,0);equal(next.items[0].completed,false);
+  equal((await api('copy','POST',{from:'2026-10',to:'2026-11'}))[0],409);
+  equal((await api('items','POST',{month:'2026-10',title:'跑步',category:'健康',tracked:true}))[0],201);
+  equal((await api('records','PUT',{title:'跑步',date:'2026-10-09'}))[0],409);
+  equal((await api('audit','GET',null,credentials.token1,{item_id:run}))[1].entries.length>0,true);
+  equal((await api('items','DELETE',{id:run}))[0],200);equal((await api('records'))[1].records.length,0);
+  const backup=resolve(folder,'backup.sqlite');execFileSync(php,[...extensionArgs,resolve(root,'scripts/backup.php'),backup],{env});
+  // Validate snapshot using an independent SQLite connection, including migration version.
+  const counts=execFileSync(php,[...extensionArgs,'-r',`$d=new PDO('sqlite:' . '${backup.replaceAll('\\','/').replaceAll("'","\\'")}'); echo json_encode([$d->query('SELECT count(*) FROM items')->fetchColumn(),$d->query('SELECT count(*) FROM schema_migrations')->fetchColumn()]);`],{encoding:'utf8'});
+  // PDO SQLite 8.0 returns aggregate values as strings; compare numeric counts.
+  equal(JSON.parse(counts).map(Number),[5,4]);
+  const discovery=await fetch(`${base}/api.php?action=discovery`);equal(discovery.status,200);
+  const spec=await discovery.json();equal(spec.authentication.type,'Bearer');equal(spec.endpoints.some(e=>e.action==='suggestions'),true);
+  equal(spec.categories,['成长','健康','家庭','财务','自我实现','社交','娱乐','职业']);
+  const docs=await fetch(`${base}/api-docs.php`);equal(docs.status,200);equal((await docs.text()).includes('机器可读接口清单'),true);
+  equal((await (await fetch(`${base}/api-docs.php?format=json`)).json()).endpoints,spec.endpoints);
+  execFileSync(php,[...extensionArgs,resolve(root,'tests/seed-history.php')],{env});
+  const history=(await api('suggestions','GET',null,credentials.token1,{month:'2026-10',category:'成长'}));equal(history[0],200);
+  equal(history[1].items.map(i=>[i.title,i.last_used_month]),[['阅读','2026-09'],['多邻国','2026-08']]);
+  equal((await api('suggestions','GET',null,credentials.token2,{month:'2026-10',category:'成长'}))[1].items,[]);
+  equal((await api('suggestions','GET',null,credentials.token1,{month:'2026-10',category:'健康'}))[1].items,[]);
+  equal((await api('suggestions','GET',null,credentials.token1,{month:'2026-07',category:'成长'}))[1].items.map(i=>i.title),['多邻国']);
+  equal((await api('suggestions','GET',null,credentials.token1,{month:'2026-10',category:'无效'}))[0],400);
+  equal((await api('items','POST',{month:'2026-10',title:'得到',category:'成长',avoid_duplicate:true}))[0],409);
+  equal((await api('items','POST',{month:'2026-10',title:'阅读',category:'成长',avoid_duplicate:true}))[0],201);
+  equal((await api('suggestions','GET',null,credentials.token1,{month:'2026-10',category:'成长'}))[1].items.map(i=>i.title),['多邻国']);
+  const previous=(await api('month','GET',null,credentials.token1,{month:'2026-09'}))[1];
+  equal(previous.access.read_only,false);equal(previous.access.can_review,true);
+  const previousItem=previous.items[0].id;
+  equal((await api('records','PUT',{item_id:previousItem,date:'2026-09-08',completed:true,note:'上月补录'}))[0],200);
+  equal((await api('items','PATCH',{id:previousItem,note:'上月纠正'}))[0],200);
+  equal((await api('review','PATCH',{month:'2026-09',completed:true}))[1].access.read_only,true);
+  const snapshot=(await api('month','GET',null,credentials.token1,{month:'2026-09'}))[1];
+  for(const [action,method,payload] of [
+    ['items','POST',{month:'2026-09',title:'锁定新增',category:'成长'}],
+    ['items','PATCH',{id:previousItem,title:'意外修改'}],
+    ['items','DELETE',{id:previousItem}],
+    ['records','PUT',{item_id:previousItem,date:'2026-09-08',completed:false,force:true}],
+    ['copy','POST',{from:'2026-10',to:'2026-09'}],
+  ]){const denied=await api(action,method,payload);equal(denied[0],403);equal(denied[1].code,'MONTH_READ_ONLY');}
+  equal((await api('month','GET',null,credentials.token1,{month:'2026-09'}))[1],snapshot);
+  equal((await api('review','PATCH',{month:'2026-09',completed:true}))[0],200);
+  equal((await api('month','GET',null,credentials.token2,{month:'2026-09'}))[1].access.read_only,false);
+  equal((await api('review','PATCH',{month:'2026-09',completed:false}))[1].access.read_only,false);
+  equal((await api('items','PATCH',{id:previousItem,note:'解锁后纠正'}))[0],200);
+  equal((await api('records','PUT',{item_id:previousItem,date:'2026-09-08',completed:false}))[0],200);
+  const old=(await api('month','GET',null,credentials.token1,{month:'2026-08'}))[1];
+  equal(old.access.read_only,true);equal(old.access.can_review,false);
+  equal((await api('review','PATCH',{month:'2026-08',completed:false}))[0],403);
+  equal((await api('items','PATCH',{id:old.items[0].id,title:'改动旧月'}))[0],403);
+  equal((await api('items','DELETE',{id:old.items[0].id}))[0],403);
+  equal((await api('items','POST',{month:'2026-08',title:'旧月',category:'成长'}))[0],403);
+  equal((await api('records','PUT',{item_id:old.items[0].id,date:'2026-08-08',force:true}))[0],403);
+  equal((await api('copy','POST',{from:'2026-08',to:'2026-12'}))[0],200);
+  equal((await api('copy','POST',{from:'2026-10',to:'2026-07'}))[0],403);
+  equal((await api('review','PATCH',{month:'2026-11',completed:true}))[0],403);
+  equal((await api('month','GET',null,credentials.token1,{month:'2026-11'}))[1].access.read_only,false);
+  equal((await api('review','PATCH',{month:'2026-10',completed:true}))[1].access.read_only,true);
+  equal((await api('items','PATCH',{id:next.items[0].id,note:'未来月仍可编辑'}))[0],200);
+  equal((await api('items','POST',{month:'2026-10',title:'已关闭本月',category:'成长'}))[0],403);
+  equal((await api('review','PATCH',{month:'2026-10',completed:false}))[1].access.read_only,false);
+  equal((await api('plans'))[1].access.read_only,false);equal((await api('projects'))[1].access.read_only,false);equal((await api('records'))[1].access.read_only,false);
+  equal(spec.endpoints.some(e=>e.action==='review'),true);
+  const once=(await api('items','POST',{month:'2026-10',title:'社保',category:'财务',once_only:true,symbol:'社'}))[1].item;
+  equal(once.once_only,true);equal(once.tracked,true);equal(once.target,null);equal(once.symbol,'社');
+  equal((await api('records','PUT',{item_id:once.id,date:'2026-10-06',completed:true,note:'已缴纳'}))[0],200);
+  equal((await api('records','PUT',{item_id:once.id,date:'2026-10-07',completed:true}))[0],409);
+  equal((await api('records','PUT',{item_id:once.id,date:'2026-10-07',note:'未完成备注',completed:false}))[0],200);
+  equal((await api('records','PUT',{item_id:once.id,date:'2026-10-06',completed:false}))[0],200);
+  equal((await api('records','PUT',{item_id:once.id,date:'2026-10-07',completed:true}))[0],200);
+  equal((await api('items','PATCH',{id:once.id,once_only:false}))[0],200);
+  equal((await api('records','PUT',{item_id:once.id,date:'2026-10-08',completed:true}))[0],200);
+  equal((await api('items','PATCH',{id:once.id,once_only:true}))[0],409);
+  equal((await api('records','PUT',{item_id:once.id,date:'2026-10-08',completed:false}))[0],200);
+  equal((await api('items','PATCH',{id:once.id,once_only:true}))[0],200);
+  equal((await api('copy','POST',{from:'2026-10',to:'2027-02'}))[0],200);
+  const copied=(await api('month','GET',null,credentials.token1,{month:'2027-02'}))[1];
+  equal(copied.items.find(i=>i.title==='社保').once_only,true);equal(copied.items.find(i=>i.title==='社保').symbol,'社');equal(copied.records.length,0);
+  const futureWrite=await api('records','PUT',{item_id:once.id,date:'2026-10-31',completed:true,force:true}); equal(futureWrite[0],403);equal(futureWrite[1].code,'FUTURE_DATE');
+  equal((await write({item_id:once.id,date:'2026-10-31',completed:false}))[0],403);
+  equal(spec.endpoints.some(e=>e.action==='outputs'&&e.method==='PUT'),true);
+  let outputRequest={external_id:'reading:note-1',date:'2026-10-08',type:'book_note',title:'第一篇笔记',links:['https://example.com/1']};
+  let outputReply=await api('outputs','PUT',outputRequest);equal(outputReply[0],201);const outputId=outputReply[1].output.id;
+  equal((await api('outputs','PUT',outputRequest))[1].unchanged,true);
+  equal((await api('outputs','GET'))[1].outputs.length,1);
+  equal((await api('outputs','PUT',{...outputRequest,external_id:'reading:note-2',title:'第二篇笔记'}))[0],201);
+  equal((await api('outputs','POST',{date:'2026-10-08',type:'article',title:'同日文章'}))[0],201);
+  equal((await api('outputs','GET'))[1].outputs.length,3);
+  equal((await api('outputs','GET',null,credentials.token1,{month:'2026-10',type:'book_note',date:'2026-10-08'}))[1].outputs.length,2);
+  equal((await api('outputs','PATCH',{id:outputId,title:'跨用户'},credentials.token2))[0],404);
+  equal((await api('outputs','PUT',outputRequest,credentials.token2))[0],201);
+  equal((await api('outputs','POST',{date:'2026-10-08',type:'bad',title:'错误'}))[0],400);
+  equal((await api('outputs','POST',{date:'2026-10-08',type:'article',title:'错误',links:['javascript:alert(1)']}))[0],400);
+  equal((await api('outputs','PUT',{date:'2026-10-08',type:'article',title:'缺外部ID'}))[0],400);
+  equal((await api('outputs','PATCH',{id:outputId,external_id:'replace'}))[0],409);
+  equal((await api('outputs','PATCH',{id:outputId,revision:0,title:'冲突'}))[0],409);
+  const outputSessionWrite=async(method,payload)=>{const r=await fetch(`${base}/api.php?action=outputs`,{method,headers:{Cookie:sessionCookie,'Content-Type':'application/json','X-CSRF-Token':sessionCsrf},body:JSON.stringify(payload)});return [r.status,await r.json()];};
+  equal((await outputSessionWrite('PATCH',{id:outputId,note:'用户修正'}))[0],200);
+  equal((await api('outputs','PATCH',{id:outputId,note:'自动覆盖'}))[0],409);
+  equal((await api('outputs','PATCH',{id:outputId,note:'授权修正',force:true}))[0],200);
+  equal((await api('outputs','PATCH',{id:outputId,date:'2026-10-31',force:true}))[0],403);
+  equal((await api('review','PATCH',{month:'2026-10',completed:true}))[0],200);
+  equal((await api('outputs','PATCH',{id:outputId,note:'锁定不能写',force:true}))[0],403);
+  equal((await api('outputs','DELETE',{id:outputId,force:true}))[0],403);
+  equal((await api('review','PATCH',{month:'2026-10',completed:false}))[0],200);
+  equal((await outputSessionWrite('DELETE',{id:outputId}))[0],200);
+  equal((await api('outputs','GET'))[1].outputs.length,2);
+  equal((await api('outputs','GET',null,credentials.token1,{month:'2026-10',include_archived:'true'}))[1].outputs.length,3);
+  equal((await api('outputs','PUT',outputRequest))[1].code,'OUTPUT_ARCHIVED');
+  equal((await outputSessionWrite('PATCH',{id:outputId,archived:false}))[0],200);
+  equal((await api('outputs','GET'))[1].outputs.length,3);
+  equal((await api('outputs','POST',{date:'2026-08-08',type:'article',title:'旧月'}))[0],403);
+  const legacyItem=(await api('items','POST',{month:'2026-10',title:'输出',category:'自我实现',tracked:true}))[1].item;
+  equal((await api('records','PUT',{item_id:legacyItem.id,date:'2026-10-08',completed:true,note:'旧的说明'}))[0],200);
+  const outputMonth=(await api('month'))[1];equal(outputMonth.outputs.length,3);equal(outputMonth.legacy_outputs.length,1);equal(outputMonth.legacy_outputs[0].note,'旧的说明');
+  equal((await api('copy','POST',{from:'2026-10',to:'2027-03'}))[0],200);
+  equal((await api('month','GET',null,credentials.token1,{month:'2027-03'}))[1].outputs.length,0);
+  const finalBackup=resolve(folder,'outputs-backup.sqlite');execFileSync(php,[...extensionArgs,resolve(root,'scripts/backup.php'),finalBackup],{env});
+  const outputCount=execFileSync(php,[...extensionArgs,'-r',`$d=new PDO('sqlite:' . '${finalBackup.replaceAll('\\','/')}');echo $d->query('SELECT count(*) FROM outputs')->fetchColumn();`],{encoding:'utf8'});equal(Number(outputCount),4);
+  console.log(`PASS: ${assertions} integration assertions (PHP + SQLite + HTTP + session/CSRF + backup).`);
+}catch(error){console.error(error);console.error(stderr.slice(-3500));process.exitCode=1;}
+finally{server.kill();}
