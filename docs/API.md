@@ -2,6 +2,8 @@
 
 新增按篇保存的输出栏目与 `outputs` 接口，读书笔记、文章、旅行记录可同日多篇。接入请求、去重与旧记录兼容见 [OUTPUTS.md](OUTPUTS.md)。
 
+0.7.0 阅读书名继续使用 `records.note`，配合 `completed:true` 显示为书名；无新增API字段。兼容规则见 [READING-PWA.md](READING-PWA.md)。
+
 一次性事件与符号字段详见 [ONCE-EVENTS.md](ONCE-EVENTS.md)。记录写入的日期不能晚于服务器 Asia/Shanghai 的今天，未来日期返回403、`code: FUTURE_DATE`，`force`不能绕过；未来月份计划仍可编辑。已有未来记录可以查询，不会自动删除。
 
 ## 月回顾与月份权限

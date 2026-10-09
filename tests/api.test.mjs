@@ -22,6 +22,7 @@ async function api(action,method='GET',payload=null,token=credentials.token1,que
 try{
   for(let i=0;i<50;i++){try{await fetch(base);break;}catch{await pause(100);}}
   equal((await fetch(base)).status,200);
+  const manifestResponse=await fetch(`${base}/manifest.php`);equal(manifestResponse.status,200);equal(manifestResponse.headers.get('content-type').startsWith('application/manifest+json'),true);equal((await manifestResponse.json()).display,'standalone');
   equal((await api('month','GET',null,'bad-token'))[0],401);
   equal((await api('month','GET',null,credentials.token1,{month:'2026-13'}))[0],400);
   equal((await api('month'))[1].items.length,0);

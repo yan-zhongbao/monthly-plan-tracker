@@ -35,7 +35,9 @@ $logged = isset($_SESSION['user_id'], $config['users'][$_SESSION['user_id']]);
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#f5f2eb"><meta name="csrf-token" content="<?= h($_SESSION['csrf']) ?>">
-  <title>月度计划与追踪</title><link rel="stylesheet" href="assets/app.css?v=0.6.0">
+  <meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="月度追踪"><meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="manifest" href="manifest.php"><link rel="apple-touch-icon" href="assets/apple-touch-icon.png"><link rel="icon" type="image/png" href="assets/icon-192.png">
+  <title>月度计划与追踪</title><link rel="stylesheet" href="assets/app.css?v=0.7.0">
 </head>
 <body>
 <?php if (!$logged): ?>
@@ -47,7 +49,7 @@ $logged = isset($_SESSION['user_id'], $config['users'][$_SESSION['user_id']]);
     <label>登录密码<input type="password" name="password" autocomplete="current-password" required autofocus></label>
     <?php if ($error): ?><p class="error"><?= h($error) ?></p><?php endif; ?>
     <button class="primary full" type="submit">打开我的笔记本 →</button>
-  </form><p class="login-foot">一个月，一页记录。 · <a href="api-docs.php">API 说明</a></p>
+  </form><p class="login-foot">一个月，一页记录。 · <a href="api-docs.php">API 说明</a> · <button type="button" class="quiet" data-install-app>安装到桌面</button></p>
 </section></main>
 <?php else: ?>
 <div class="app-shell">
@@ -56,7 +58,7 @@ $logged = isset($_SESSION['user_id'], $config['users'][$_SESSION['user_id']]);
 <div id="primary-controls">
 <header class="app-header">
   <div class="brand"><span class="brand-mark">月</span><div><h1>月度计划与追踪</h1><span class="eyebrow">MY MONTHLY NOTEBOOK</span></div></div>
-  <div class="header-right"><a class="quiet" href="api-docs.php" target="_blank" rel="noopener">API 说明</a><span id="save-state" role="status">正在打开…</span><form method="post"><input type="hidden" name="csrf" value="<?= h($_SESSION['csrf']) ?>"><button class="quiet" name="logout" value="1">退出</button></form></div>
+  <div class="header-right"><button type="button" class="quiet" data-install-app>安装到桌面</button><a class="quiet" href="api-docs.php" target="_blank" rel="noopener">API 说明</a><span id="save-state" role="status">正在打开…</span><form method="post"><input type="hidden" name="csrf" value="<?= h($_SESSION['csrf']) ?>"><button class="quiet" name="logout" value="1">退出</button></form></div>
 </header>
   <section class="month-bar">
     <div class="month-heading"><span class="eyebrow" id="month-subtitle">记录每一天</span><div class="month-controls"><button id="prev-month" class="icon-button" aria-label="上个月">‹</button><h2 id="month-title">本月</h2><button id="next-month" class="icon-button" aria-label="下个月">›</button><input id="month-picker" type="month" aria-label="选择月份" min="2000-01" max="2099-12"></div></div>
@@ -109,7 +111,7 @@ $logged = isset($_SESSION['user_id'], $config['users'][$_SESSION['user_id']]);
 <dialog id="record-dialog"><form id="record-form">
   <div class="dialog-head"><div><span class="eyebrow" id="record-date"></span><h3 id="record-title">记录详情</h3></div><button type="button" class="icon-button close-dialog" aria-label="关闭">×</button></div>
   <label class="check-label"><input id="record-completed" type="checkbox">这一天已完成</label>
-  <label>补充备注<textarea id="record-note" rows="4" maxlength="4000" placeholder="书名、朋友名字，或想留住的一点细节…"></textarea></label>
+  <label><span id="record-note-label">补充备注</span><textarea id="record-note" rows="4" maxlength="4000" placeholder="书名、朋友名字，或想留住的一点细节…"></textarea></label>
   <label>详情链接（每行一个）<textarea id="record-links" rows="2" placeholder="https://…"></textarea></label>
   <div id="record-link-list" class="record-link-list"></div>
   <label class="check-label"><input id="record-lock" type="checkbox">保留我的修改，自动填写时不覆盖</label>
@@ -117,6 +119,8 @@ $logged = isset($_SESSION['user_id'], $config['users'][$_SESSION['user_id']]);
   <div class="dialog-actions"><button id="record-save" class="primary" type="submit">保存记录</button></div>
 </form></dialog>
 <dialog id="export-dialog"><div class="dialog-head"><div><span class="eyebrow">MONTHLY ARCHIVE</span><h3>保存这个月</h3></div><button class="icon-button close-dialog" aria-label="关闭">×</button></div><p class="muted">导出后可交给 OpenClaw 归档到 Get 笔记。</p><div class="export-options"><button data-export="png">月度表格图片 <span>PNG · 适合放进笔记</span></button><button data-export="csv">表格文件 <span>CSV · 可用 Excel 打开</span></button><button data-export="json">完整月度数据 <span>JSON · 含计划、备注和链接</span></button><button data-export="print">打印 / 保存 PDF <span>浏览器打印当前月表</span></button></div></dialog>
-<div id="toast" role="status" hidden></div><script src="assets/app.js?v=0.6.0" defer></script>
+<div id="toast" role="status" hidden></div><script src="assets/tracking-display.js?v=0.7.0" defer></script><script src="assets/app.js?v=0.7.0" defer></script>
 <?php endif; ?>
+<dialog id="install-dialog" aria-labelledby="install-title"><div class="dialog-head"><h3 id="install-title">安装到桌面</h3><button type="button" class="icon-button" id="install-close" aria-label="关闭安装说明">×</button></div><p id="install-status" class="field-help" role="status">安装后可从桌面直接打开，需要联网同步记录。</p><button id="install-confirm" type="button" class="primary full" hidden>安装应用</button><ul class="install-guide"><li><strong>安卓 Chrome：</strong>浏览器菜单 → 安装应用 / 添加到主屏幕。</li><li><strong>Windows Chrome / Edge：</strong>地址栏安装图标，或浏览器菜单 → 安装应用（Edge 中在“应用”菜单）。</li><li><strong>iPhone / iPad：</strong>用 Safari 打开 → 分享 → 添加到主屏幕；如显示“作为网页 App 打开”，保持开启。</li><li><strong>Mac Safari：</strong>文件 → 添加到程序坞。</li></ul><p class="field-help">安装按钮是否出现由浏览器决定；微信等内置浏览器请先在系统浏览器打开。</p></dialog>
+<script src="assets/pwa.js?v=0.7.0" defer></script>
 </body></html>

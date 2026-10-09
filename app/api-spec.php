@@ -35,7 +35,7 @@ function api_spec(): array {
     $outputPatch=['id'=>['type'=>'integer','required'=>true,'description'=>'输出ID（独立于项目ID）。']]+$outputPatch;
     $outputPatch['archived']=['type'=>'boolean','required'=>false,'description'=>'false恢复已移除输出。'];
     return [
-        'name'=>'月度计划与追踪 API','version'=>'1.4','app_version'=>'0.6.0',
+        'name'=>'月度计划与追踪 API','version'=>'1.4','app_version'=>'0.7.0',
         'base_path'=>'api.php','documentation_path'=>'api-docs.php',
         'authentication'=>[
             'type'=>'Bearer','header'=>'Authorization: Bearer <API_TOKEN>',
@@ -105,6 +105,7 @@ function api_spec(): array {
             '历史候选来自仍保存的历史项目，不包含已删除项目。',
             '接口不采集第三方平台数据，不直接归档到 Get，不支持批量写入或浏览器 CORS。',
             'outputs.external_id按用户唯一，不要求每天唯一；同日可有多个同类型输出。复制月计划不复制输出内容。',
+            '标题以“阅读”开头的每日追踪项目，completed=true且note非空时在格子显示note作为书名；只有勾选且note为空表示当天读过。书名仍保存在原note字段，未新增数据库字段。',
         ],
     ];
 }

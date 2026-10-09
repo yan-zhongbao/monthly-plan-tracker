@@ -67,7 +67,8 @@ function cellHtml(item,day){
   const date=dateFor(day), r=getRecord(item.id,date), weekday=new Date(`${date}T12:00:00`).getDay();
   const attrs=[weekday===1?'week-start':'',weekday===0||weekday===6?'weekend':'',date===today?'today':'',date>today?'future-date':''].join(' ');
   const detail=r?.note || r?.links?.length;
-  return `<td class="${attrs}"><button class="cell-button ${r?.completed?'checked':''}" data-item="${item.id}" data-date="${date}" aria-pressed="${!!r?.completed}" aria-label="${esc(item.title)}，${day}日，${r?.completed?'已完成':'未标记'}${detail?'，有备注或链接':''}" title="${esc(item.title+(r?.note?'：'+r.note:'；点击标记；长按或右键添加备注'))}">${r?.completed?markHtml(item):''}${detail?'<span class="cell-note"></span>':''}</button></td>`;
+  const book=TrackerDisplay.bookTitle(item,r);
+  return `<td class="${attrs}"><button class="cell-button ${r?.completed?'checked':''} ${book?'book-cell':''}" data-item="${item.id}" data-date="${date}" aria-pressed="${!!r?.completed}" aria-label="${esc(item.title)}，${day}日，${r?.completed?'已完成':'未标记'}${book?'，书名：'+esc(book):detail?'，有备注或链接':''}" title="${esc(item.title+(r?.note?'：'+r.note:'；点击标记；长按或右键添加备注'))}">${book?`<span class="book-title">${TrackerDisplay.escape(book)}</span>`:r?.completed?markHtml(item):''}${detail&&!book?'<span class="cell-note"></span>':''}</button></td>`;
 }
 function groupHtml(label,items){
   if(!items.length)return '';
@@ -136,7 +137,7 @@ function bindCell(button){
   button.addEventListener('pointermove',event=>{if(Math.abs(event.clientX-startX)>8||Math.abs(event.clientY-startY)>8){clearTimeout(timer);suppressed=true;}});
   for(const event of ['pointerup','pointercancel','pointerleave'])button.addEventListener(event,()=>clearTimeout(timer));
   button.addEventListener('contextmenu',event=>{event.preventDefault();clearTimeout(timer);open();});
-  button.addEventListener('click',event=>{if(suppressed){suppressed=false;return;}if(event.shiftKey){open();return;}toggleRecord(Number(button.dataset.item),button.dataset.date);});
+  button.addEventListener('click',event=>{if(suppressed){suppressed=false;return;}if(event.shiftKey||button.classList.contains('book-cell')){open();return;}toggleRecord(Number(button.dataset.item),button.dataset.date);});
   button.addEventListener('keydown',event=>{if(event.key==='F2'){event.preventDefault();open();}});
 }
 async function toggleRecord(itemId,date){
@@ -249,6 +250,8 @@ function openRecord(itemId,date){
   activeRecord={itemId,date,revision:record?.revision??0};
   $('record-title').textContent=item.title;$('record-date').textContent=date.replaceAll('-',' / ');
   $('record-completed').checked=!!record?.completed;$('record-note').value=record?.note??'';
+  $('record-note-label').textContent=TrackerDisplay.isReading(item)?'书名（填书名表示读完；只打勾表示读过）':'补充备注';
+  $('record-note').placeholder=TrackerDisplay.isReading(item)?'例如：《悉达多》；有书名时直接显示在格子里':'书名、朋友名字，或想留住的一点细节…';
   $('record-links').value=(record?.links??[]).join('\n');$('record-lock').checked=record?.source==='manual' ? record.manual_lock : true;
   $('record-source').textContent=record?`来源：${record.source==='manual'?'手动记录':'OpenClaw'} · 修改时间：${new Date(record.updated_at).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai'})}`:'可以只写备注，也可以一起标记完成。';
   $('record-link-list').innerHTML=(record?.links??[]).map((link,i)=>`<a href="${esc(link)}" target="_blank" rel="noopener noreferrer">打开详情 ${i+1} ↗</a>`).join('');
@@ -309,7 +312,12 @@ function svgText(){
   const tracked=data.items.filter(i=>i.tracked&&!i.once_only&&!isOutputItem(i));
   const groups=[['',tracked.filter(i=>!i.unplanned)],['计划外记录',tracked.filter(i=>i.unplanned)]];
   for(const [label,items] of groups){if(!items.length)continue;if(label){rect(40,y,width-80,28,'#f1f3e9');text(52,y+19,label,12);y+=28;}
-    for(const item of items){rect(40,y,width-80,38,tracked.indexOf(item)%2?'#eef1e7':'#fffdf8');text(52,y+26,item.title,14);for(let d=1;d<=days;d++){const r=getRecord(item.id,dateFor(d)),x=40+name+(d-1)*cell;if(r?.completed){rect(x,y,cell,38,'#edf2e3');text(x+cell/2,y+26,symbolFor(item),20,'#557a53','text-anchor="middle"');}if(r?.note||r?.links?.length)text(x+cell-5,y+32,'•',11,'#b39462');line(x,y,x,y+38);}text(width-40-sum/2,y+25,`${dayCount(item.id)}${item.target?' / '+item.target:' 天'}`,14,'#557a53','text-anchor="middle"');line(40,y+38,width-40,y+38);y+=38;}
+    for(const item of items){
+      const books=Array.from({length:days},(_,i)=>TrackerDisplay.bookTitle(item,getRecord(item.id,dateFor(i+1))));
+      const height=books.some(Boolean)?54:38;rect(40,y,width-80,height,tracked.indexOf(item)%2?'#eef1e7':'#fffdf8');text(52,y+26,item.title,14);
+      for(let d=1;d<=days;d++){const r=getRecord(item.id,dateFor(d)),x=40+name+(d-1)*cell,book=books[d-1];if(r?.completed){rect(x,y,cell,height,'#edf2e3');if(book){const lines=wrap(book.replaceAll('\n',' / '),3).slice(0,3);if(Array.from(book).length>9)lines[2]=lines[2].slice(0,2)+'…';lines.forEach((s,n)=>text(x+cell/2,y+16+n*14,s,10,'#557a53','text-anchor="middle"'));}else{text(x+cell/2,y+26,symbolFor(item),20,'#557a53','text-anchor="middle"');}}if(!book&&(r?.note||r?.links?.length))text(x+cell-5,y+height-6,'•',11,'#b39462');line(x,y,x,y+height);}
+      text(width-40-sum/2,y+25,`${dayCount(item.id)}${item.target?' / '+item.target:' 天'}`,14,'#557a53','text-anchor="middle"');line(40,y+height,width-40,y+height);y+=height;
+    }
   }
   const events=data.items.filter(i=>i.once_only&&!isOutputItem(i));
   if(events.length){
@@ -411,6 +419,7 @@ $('more-symbols').onclick=()=>renderSymbolOptions($('more-symbols').getAttribute
 renderSymbolOptions(false);
 $('symbol-auto').onclick=()=>{$('item-symbol').value='';setSymbolPicker(false);};
 $('item-form').onsubmit=submitItem;$('record-form').onsubmit=submitRecord;
+$('record-note').oninput=()=>{const item=data.items.find(i=>i.id===activeRecord?.itemId);if(TrackerDisplay.isReading(item)&&!$('record-note').readOnly&&$('record-note').value.trim())$('record-completed').checked=true;};
 $('delete-item').onclick=async()=>{if(!confirm('删除这个项目及其所有每日记录？此操作无法在页面中撤销。'))return;try{await api('items','DELETE',{id:Number($('item-id').value)});$('item-dialog').close();await load();toast('项目已删除');}catch(e){toast(e.message);}};
 $('copy-month').onclick=async()=>{
   if(loading||data.month!==month)return;

@@ -1,5 +1,11 @@
 # 验证与复测
 
+## 0.7.0 补充验证
+
+`node tests/display-pwa.test.mjs` 验证阅读书名显示/取消后的备注保留/HTML安全输出、图标尺寸、manifest、安装弹窗的用户点击触发及取消，以及Service Worker不缓存私人页面或API、不删除其他应用缓存。
+
+`tests/api.test.mjs` 另验证manifest.php的公开访问、正确MIME与独立窗口声明。阅读显示不修改数据库schema；系统级PWA安装需在对应真实设备完成，桌面浏览器中的手机尺寸预览不代表iOS安装验收。
+
 ## 2026-10-08 验证结果
 
 - PHP 8.4.26 便携运行时，PDO SQLite，真实 HTTP 请求；不是模拟数据层。
