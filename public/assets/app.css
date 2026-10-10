@@ -44,3 +44,13 @@
  .plan-entry{min-height:34px;padding:4px 0}
  .plan-move button{width:28px;height:28px;font-size:16px;line-height:26px}
 }
+
+/* Explicit columns are filled up to the viewport bottom before starting the next. */
+.plan-grid{display:flex;columns:auto;gap:14px;align-items:flex-start;overflow-x:auto;padding-bottom:4px;scrollbar-width:thin}
+.plan-column{display:flex;flex-direction:column;gap:14px;flex:0 0 var(--plan-column-width);min-width:0}
+.plan-grid .plan-card{display:block;flex-shrink:0;width:100%;margin:0;min-height:0;padding:12px}
+.plan-grid>.plan-card{width:var(--plan-column-width,100%)}
+@media(max-width:640px){
+ .plan-grid{display:block;overflow:visible;padding-bottom:0}
+ .plan-grid>.plan-card{width:100%;margin:0 0 12px}
+}

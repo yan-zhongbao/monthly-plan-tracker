@@ -160,6 +160,46 @@ function updateRecord(record){
   if(index<0)data.records.push(record);else data.records[index]=record;
   rebuildRecords();renderTracker();renderPlan();renderAccess();
 }
+// Pack complete category cards against the visible page height, in category order.
+function planColumns(heights,limit,gap=14){
+  const columns=[];let column=[],used=0;
+  heights.forEach((height,index)=>{
+    if(column.length&&used+gap+height>limit){columns.push(column);column=[];used=0;}
+    used+=(column.length?gap:0)+height;column.push(index);
+  });
+  if(column.length)columns.push(column);
+  return columns;
+}
+function layoutPlan(){
+  const grid=$('plan-grid');
+  if(view!=='plan'||!grid||!grid.clientWidth)return;
+  const cards=Array.from(grid.querySelectorAll('.plan-card'));
+  const left=grid.scrollLeft;
+  grid.replaceChildren(...cards);
+  if(window.matchMedia('(max-width:640px)').matches){
+    grid.style.removeProperty('--plan-column-width');
+    cards.forEach(card=>card.style.removeProperty('width'));
+    grid.scrollLeft=0;return;
+  }
+  const gap=14,width=grid.clientWidth;
+  const count=Math.max(1,Math.min(4,Math.floor((width+gap)/264)));
+  const columnWidth=(width-gap*(count-1))/count;
+  grid.style.setProperty('--plan-column-width',`${columnWidth}px`);
+  cards.forEach(card=>card.style.width=`${columnWidth}px`);
+  // Use the page origin so ordinary vertical scrolling doesn't repack the cards.
+  const top=grid.getBoundingClientRect().top+window.scrollY;
+  const available=Math.max(160,window.innerHeight-top-24);
+  const columns=planColumns(cards.map(card=>Math.ceil(card.getBoundingClientRect().height)),available,gap);
+  columns.forEach(indices=>{
+    const column=document.createElement('div');column.className='plan-column';
+    indices.forEach(index=>column.append(cards[index]));grid.append(column);
+  });
+  grid.scrollLeft=left;
+}
+function schedulePlanLayout(){
+  cancelAnimationFrame(schedulePlanLayout.frame);
+  schedulePlanLayout.frame=requestAnimationFrame(layoutPlan);
+}
 function planMoveHtml(item){
   if(!item.tracked||item.once_only||isOutputItem(item))return '';
   const peers=data.items.filter(i=>i.tracked&&!i.once_only&&!isOutputItem(i)&&i.category===item.category&&i.unplanned===item.unplanned);
@@ -202,12 +242,14 @@ function renderPlan(){
     const item=data.items.find(i=>i.id===Number(b.dataset.planCheck));b.disabled=true;
     try{await api('items','PATCH',{id:item.id,completed:!item.completed});await load();}catch(e){toast(e.message);b.disabled=false;}
   });
+  schedulePlanLayout();
 }
 function switchView(next){
   view=next;$('tracker-view').hidden=view!=='tracker';$('plan-view').hidden=view!=='plan';
   for(const tab of ['tracker','plan']){$(`tab-${tab}`).classList.toggle('active',tab===view);$(`tab-${tab}`).setAttribute('aria-selected',String(tab===view));}
   $('view-hint').textContent=view==='tracker'?'轻点打勾 · 长按 / 右键添加备注':'八个方面可以留白 · 只有选中的项目进入追踪表';
   renderAccess();
+  if(view==='plan')schedulePlanLayout();
   if(view==='tracker') {sizeTable();scrollToDate(month===today.slice(0,7)?Number(today.slice(8)):1);}
 }
 function openItem(id=null,unplanned=false,tracked=false,category=null){
@@ -513,4 +555,6 @@ $('output-archives').onclick=async()=>{
   }catch(error){toast(error.message);}
 };
 
+window.addEventListener('resize',schedulePlanLayout);
+if(document.fonts)document.fonts.ready.then(schedulePlanLayout);
 load(true);

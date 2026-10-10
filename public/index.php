@@ -40,7 +40,7 @@ $logged = isset($_SESSION['user_id'], $config['users'][$_SESSION['user_id']]);
   <meta name="theme-color" content="#f5f2eb"><meta name="csrf-token" content="<?= h($_SESSION['csrf']) ?>">
   <meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="月度追踪"><meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="manifest" href="manifest.php"><link rel="apple-touch-icon" href="assets/apple-touch-icon.png"><link rel="icon" type="image/png" href="assets/icon-192.png">
-  <title>月度计划与追踪</title><link rel="stylesheet" href="assets/app.css?v=0.7.2">
+  <title>月度计划与追踪</title><link rel="stylesheet" href="assets/app.css?v=0.7.3">
 </head>
 <body>
 <?php if (!$logged): ?>
@@ -123,8 +123,8 @@ $logged = isset($_SESSION['user_id'], $config['users'][$_SESSION['user_id']]);
   <div class="dialog-actions"><button id="record-save" class="primary" type="submit">保存记录</button></div>
 </form></dialog>
 <dialog id="export-dialog"><div class="dialog-head"><div><span class="eyebrow">MONTHLY ARCHIVE</span><h3>保存这个月</h3></div><button class="icon-button close-dialog" aria-label="关闭">×</button></div><p class="muted">导出后可交给 OpenClaw 归档到 Get 笔记。</p><div class="export-options"><button data-export="png">月度表格图片 <span>PNG · 适合放进笔记</span></button><button data-export="csv">表格文件 <span>CSV · 可用 Excel 打开</span></button><button data-export="json">完整月度数据 <span>JSON · 含计划、备注和链接</span></button><button data-export="print">打印 / 保存 PDF <span>浏览器打印当前月表</span></button></div></dialog>
-<div id="toast" role="status" hidden></div><script src="assets/tracking-display.js?v=0.7.2" defer></script><script src="assets/app.js?v=0.7.2" defer></script>
+<div id="toast" role="status" hidden></div><script src="assets/tracking-display.js?v=0.7.3" defer></script><script src="assets/app.js?v=0.7.3" defer></script>
 <?php endif; ?>
 <dialog id="install-dialog" aria-labelledby="install-title"><div class="dialog-head"><h3 id="install-title">安装到桌面</h3><button type="button" class="icon-button" id="install-close" aria-label="关闭安装说明">×</button></div><p id="install-status" class="field-help" role="status">安装后可从桌面直接打开，需要联网同步记录。</p><button id="install-confirm" type="button" class="primary full" hidden>安装应用</button><ul class="install-guide"><li><strong>安卓 Chrome：</strong>浏览器菜单 → 安装应用 / 添加到主屏幕。</li><li><strong>Windows Chrome / Edge：</strong>地址栏安装图标，或浏览器菜单 → 安装应用（Edge 中在“应用”菜单）。</li><li><strong>iPhone / iPad：</strong>用 Safari 打开 → 分享 → 添加到主屏幕；如显示“作为网页 App 打开”，保持开启。</li><li><strong>Mac Safari：</strong>文件 → 添加到程序坞。</li></ul><p class="field-help">安装按钮是否出现由浏览器决定；微信等内置浏览器请先在系统浏览器打开。</p></dialog>
-<script src="assets/pwa.js?v=0.7.2" defer></script>
+<script src="assets/pwa.js?v=0.7.3" defer></script>
 </body></html>
