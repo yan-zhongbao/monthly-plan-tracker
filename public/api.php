@@ -42,6 +42,34 @@ try {
         if ($before['review_completed'] !== (bool)$completed) { audit($user,'month_review',0,$source,['month'=>$month,'completed'=>$before['review_completed']],['month'=>$month,'completed'=>(bool)$completed]); }
         commit_write(); respond(['month'=>$month,'access'=>$after]);
     }
+    if ($action === 'move' && $method === 'PATCH') {
+        $item = item_for($user, (int)($data['id'] ?? 0));
+        $direction = $data['direction'] ?? '';
+        if (!in_array($direction, ['up','down'], true)) { fail('移动方向须为 up 或 down。'); }
+        begin_write($user);
+        $item = item_for($user, $item['id']);
+        assert_month_writable($user, $item['month']);
+        if (!$item['tracked'] || $item['once_only'] || $item['title']==='输出') { rollback_write(); fail('只可移动每日追踪项目。'); }
+        $rows = array_map('normalize_item', query('SELECT * FROM items WHERE user_id=? AND month=? ORDER BY sort_order,id', [$user,$item['month']]));
+        $peers = array_values(array_filter($rows, fn($r)=>$r['tracked'] && !$r['once_only'] && $r['title']!=='输出' && $r['category']===$item['category'] && $r['unplanned']===$item['unplanned']));
+        $index = array_search($item['id'], array_column($peers,'id'), true);
+        $next = $index + ($direction==='up' ? -1 : 1);
+        if ($next>=0 && $next<count($peers)) {
+            $ids = array_column($rows,'id');
+            $left = array_search($item['id'],$ids,true);
+            array_splice($ids,$left,1);
+            $right = array_search($peers[$next]['id'],$ids,true);
+            array_splice($ids,$right + ($direction==='down' ? 1 : 0),0,[$item['id']]);
+            $byId = array_column($rows,null,'id'); $now = date(DATE_ATOM);
+            foreach ($ids as $rank=>$id) {
+                $before = $byId[$id]; $order = $rank;
+                if ($before['sort_order']===$order) { continue; }
+                execute('UPDATE items SET sort_order=?,updated_at=? WHERE user_id=? AND id=?', [$order,$now,$user,$id]);
+                audit($user,'update_item',$id,$source,$before,item_for($user,$id));
+            }
+        }
+        commit_write(); respond(month_data($user,$item['month']));
+    }
     if ($action === 'items' && in_array($method, ['POST', 'PATCH', 'DELETE'], true)) {
         $before = $method === 'POST' ? null : item_for($user, (int)($data['id'] ?? 0));
         if ($method === 'DELETE') {

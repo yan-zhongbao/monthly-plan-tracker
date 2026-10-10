@@ -160,12 +160,18 @@ function updateRecord(record){
   if(index<0)data.records.push(record);else data.records[index]=record;
   rebuildRecords();renderTracker();renderPlan();renderAccess();
 }
+function planMoveHtml(item){
+  if(!item.tracked||item.once_only||isOutputItem(item))return '';
+  const peers=data.items.filter(i=>i.tracked&&!i.once_only&&!isOutputItem(i)&&i.category===item.category&&i.unplanned===item.unplanned);
+  const index=peers.findIndex(i=>i.id===item.id);
+  return `<span class="plan-move"><button type="button" data-move-item="${item.id}" data-direction="up" aria-label="上移${esc(item.title)}" title="上移" ${readOnly()||index===0?'disabled':''}>↑</button><button type="button" data-move-item="${item.id}" data-direction="down" aria-label="下移${esc(item.title)}" title="下移" ${readOnly()||index===peers.length-1?'disabled':''}>↓</button></span>`;
+}
 function renderPlan(){
   const plans=data.items.filter(i=>!i.unplanned), singles=plans.filter(i=>!i.tracked);
   $('plan-summary').textContent=`${plans.length} 项月计划 · ${plans.filter(i=>i.tracked&&!i.once_only).length} 项每日追踪 · ${plans.filter(i=>i.once_only).length} 项一次性事件 · ${singles.filter(i=>i.completed).length} / ${singles.length} 项独立事项已完成`;
   $('plan-grid').innerHTML=categories.map((category,index)=>{
     const items=plans.filter(i=>i.category===category);
-    return `<article class="plan-card"><div class="plan-card-header"><h3>${category}</h3><span>${categoryEn[index]}</span></div>${items.length?items.map(item=>`<div class="plan-entry ${item.completed&&!item.tracked?'done':''}">${item.tracked?`<span class="plan-tracked-icon" title="${esc(item.once_only?'在底部一次性事件中标记':'在追踪表打勾')}">${markHtml(item)}</span>`:`<button class="plan-check ${item.completed?'checked':''}" data-plan-check="${item.id}" aria-label="标记${esc(item.title)}完成" aria-pressed="${item.completed}">${item.completed?'✓':''}</button>`}<div class="plan-entry-content"><button class="plan-entry-title" data-plan-edit="${item.id}">${esc(item.title)}</button>${item.note?`<div class="plan-entry-note">${esc(item.note)}</div>`:''}${item.tracked?`<span class="plan-badge">${item.once_only?`一次性事件 · ${dayCount(item.id)?'已完成':'待完成'}`:`每日追踪 · ${dayCount(item.id)}${item.target?' / '+item.target:''} 天`}</span>`:''}</div></div>`).join(''):'<div class="plan-empty">这个方面暂时留白。</div>'}<button class="quiet" data-category="${category}">＋ 添加计划</button></article>`;
+    return `<article class="plan-card"><div class="plan-card-header"><h3>${category}</h3><span>${categoryEn[index]}</span></div>${items.length?items.map(item=>`<div class="plan-entry ${item.completed&&!item.tracked?'done':''}">${item.tracked?`<span class="plan-tracked-icon" title="${esc(item.once_only?'在底部一次性事件中标记':'在追踪表打勾')}">${markHtml(item)}</span>`:`<button class="plan-check ${item.completed?'checked':''}" data-plan-check="${item.id}" aria-label="标记${esc(item.title)}完成" aria-pressed="${item.completed}">${item.completed?'✓':''}</button>`}<div class="plan-entry-content"><button class="plan-entry-title" data-plan-edit="${item.id}">${esc(item.title)}</button>${item.note?`<div class="plan-entry-note">${esc(item.note)}</div>`:''}${item.tracked?`<span class="plan-badge">${item.once_only?`一次性事件 · ${dayCount(item.id)?'已完成':'待完成'}`:`每日追踪 · ${dayCount(item.id)}${item.target?' / '+item.target:''} 天`}</span>`:''}</div>${planMoveHtml(item)}</div>`).join(''):'<div class="plan-empty">这个方面暂时留白。</div>'}<button class="quiet" data-category="${category}">＋ 添加计划</button></article>`;
   }).join('');
   document.querySelectorAll('[data-plan-edit]').forEach(b=>{
     const item=data.items.find(i=>i.id===Number(b.dataset.planEdit));
@@ -177,6 +183,17 @@ function renderPlan(){
       entry.querySelector('.plan-tracked-icon').innerHTML=markHtml(item);
       entry.querySelector('.plan-badge').textContent=dayCount(item.id)>0?'一次性事件 · 已完成':'一次性事件 · 待完成';
     }
+  });
+  document.querySelectorAll('[data-move-item]').forEach(b=>b.onclick=async()=>{
+    if(readOnly()||loading||data.month!==month)return;
+    const id=Number(b.dataset.moveItem),direction=b.dataset.direction;
+    const requestedMonth=month;loading=true;
+    document.querySelectorAll('[data-move-item]').forEach(button=>button.disabled=true);
+    try{
+      const result=await api('move','PATCH',{id,direction});
+      if(month===requestedMonth){data=result;rebuildRecords();render();toast('顺序已保存，月度追踪同步更新');}
+    }catch(error){toast(error.message);await load();}
+    finally{loading=false;if(month===requestedMonth)renderPlan();}
   });
   document.querySelectorAll('[data-plan-edit]').forEach(b=>b.onclick=()=>openItem(Number(b.dataset.planEdit)));
   document.querySelectorAll('[data-category]').forEach(b=>b.onclick=()=>openItem(null,false,false,b.dataset.category));

@@ -4,7 +4,7 @@
 
 仓库仅包含程序、配置示例、迁移、测试和文档。私人配置、真实数据、部署凭证、个人截图与服务器操作记录留在本地，不纳入 Git。
 
-0.7.0 支持 PHP 8.0+ 与 MySQL，提供网页首次初始化；已有 SQLite 配置继续可用。MySQL 部署见 docs/MYSQL.md。一次性事件与符号使用和升级见 [docs/ONCE-EVENTS.md](docs/ONCE-EVENTS.md)。输出栏目与龙虾接入见 [docs/OUTPUTS.md](docs/OUTPUTS.md)。
+0.7.1 支持 PHP 8.0+ 与 MySQL，提供网页首次初始化；已有 SQLite 配置继续可用。MySQL 部署见 docs/MYSQL.md。一次性事件与符号使用和升级见 [docs/ONCE-EVENTS.md](docs/ONCE-EVENTS.md)。输出栏目与龙虾接入见 [docs/OUTPUTS.md](docs/OUTPUTS.md)。
 
 手机顶部收为一行，辅助功能在“⋯”菜单；布局说明见 [docs/MOBILE.md](docs/MOBILE.md)。
 
@@ -57,3 +57,5 @@ config.php    本机/服务器私密配置，初始化生成，部署包不包�
 ```
 
 正式站点初始没有任何预置项目或历史记录。文件夹里的照片作为需求参考保留，不会被导入为正式数据。
+
+登录与排序：[功能及迁移说明](docs/LOGIN-SORTING.md)。

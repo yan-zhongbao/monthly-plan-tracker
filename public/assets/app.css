@@ -21,3 +21,7 @@
 @media print{.mobile-topbar,#mobile-menu{display:none!important}}
 .cell-button.book-cell{height:auto;min-height:25px;padding:4px 2px;font-size:10px;line-height:13px;font-weight:500}.book-title{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;overflow-wrap:anywhere;white-space:normal}.book-cell:hover .book-title{color:#294733}.install-guide{padding-left:20px;font-size:12px;line-height:1.9}.install-guide li{margin-bottom:12px}[data-install-app][hidden]{display:none!important}
 @media(max-width:640px){.cell-button.book-cell{min-height:37px;padding:5px 3px;font-size:12px;line-height:15px}.book-title{-webkit-line-clamp:2}#mobile-menu .header-right{flex-wrap:wrap;justify-content:flex-start;gap:5px}#mobile-menu .header-right #save-state{margin-left:auto}.mobile-topbar{padding-top:env(safe-area-inset-top);height:calc(44px + env(safe-area-inset-top))}.table-scroll{max-height:calc(100dvh - 44px - env(safe-area-inset-top) - env(safe-area-inset-bottom))}.notebook-bottom{padding-bottom:max(7px,env(safe-area-inset-bottom))}}
+
+.login-card .remember-login{display:flex;align-items:center;gap:8px;font-size:13px;margin:14px 0}.login-card .remember-login input{width:16px;height:16px;margin:0;accent-color:var(--green)}
+
+.plan-move{display:flex;gap:3px;margin-left:auto;flex-shrink:0}.plan-move button{width:30px;height:32px;padding:0;background:transparent;border:1px solid var(--line);border-radius:5px;color:var(--green);font-size:17px}.plan-move button:disabled{opacity:.25;cursor:default}.plan-entry-content{min-width:0}

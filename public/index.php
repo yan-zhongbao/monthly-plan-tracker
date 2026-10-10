@@ -13,14 +13,17 @@ try { $config = config(); session_boot(); } catch (Throwable $e) {
 $error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
-    if (isset($_POST['logout'])) { $_SESSION = []; session_destroy(); header('Location: ./'); exit; }
+    if (isset($_POST['logout'])) { remember_forget(); $_SESSION = []; session_destroy(); setcookie(session_name(), '', ['expires'=>time()-3600,'path'=>'/','httponly'=>true,'samesite'=>'Strict','secure'=>!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off']); header('Location: ./'); exit; }
     $key = hash('sha256', $_SERVER['REMOTE_ADDR'] ?? 'local');
     $attempt = query('SELECT * FROM login_attempts WHERE ip_hash=?', [$key])[0] ?? ['failures'=>0,'last_attempt'=>0];
     if ($attempt['failures'] >= 8 && time() - $attempt['last_attempt'] < 900) { $error = '尝试次数较多，请 15 分钟后重试。'; }
     else {
         $id = (int)($_POST['user_id'] ?? 1);
         if (isset($config['users'][$id]) && password_verify((string)($_POST['password'] ?? ''), $config['users'][$id]['password_hash'])) {
+            remember_forget();
             session_regenerate_id(true); $_SESSION['user_id'] = $id; $_SESSION['csrf'] = bin2hex(random_bytes(32));
+            $_SESSION['password_fingerprint'] = hash('sha256', $config['users'][$id]['password_hash']);
+            if (!empty($_POST['remember'])) { remember_issue($id); }
             execute('DELETE FROM login_attempts WHERE ip_hash=?', [$key]); header('Location: ./'); exit;
         }
         $failures = time() - $attempt['last_attempt'] > 900 ? 1 : (int)$attempt['failures'] + 1;
@@ -37,7 +40,7 @@ $logged = isset($_SESSION['user_id'], $config['users'][$_SESSION['user_id']]);
   <meta name="theme-color" content="#f5f2eb"><meta name="csrf-token" content="<?= h($_SESSION['csrf']) ?>">
   <meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="月度追踪"><meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="manifest" href="manifest.php"><link rel="apple-touch-icon" href="assets/apple-touch-icon.png"><link rel="icon" type="image/png" href="assets/icon-192.png">
-  <title>月度计划与追踪</title><link rel="stylesheet" href="assets/app.css?v=0.7.0">
+  <title>月度计划与追踪</title><link rel="stylesheet" href="assets/app.css?v=0.7.1">
 </head>
 <body>
 <?php if (!$logged): ?>
@@ -47,6 +50,7 @@ $logged = isset($_SESSION['user_id'], $config['users'][$_SESSION['user_id']]);
   <form method="post"><input type="hidden" name="csrf" value="<?= h($_SESSION['csrf']) ?>">
     <?php if (count($config['users']) > 1): ?><label>用户<select name="user_id"><?php foreach ($config['users'] as $id=>$user): ?><option value="<?= (int)$id ?>"><?= h($user['name']) ?></option><?php endforeach; ?></select></label><?php endif; ?>
     <label>登录密码<input type="password" name="password" autocomplete="current-password" required autofocus></label>
+    <label class="remember-login"><input type="checkbox" name="remember" value="1" checked>记住这台设备 90 天</label>
     <?php if ($error): ?><p class="error"><?= h($error) ?></p><?php endif; ?>
     <button class="primary full" type="submit">打开我的笔记本 →</button>
   </form><p class="login-foot">一个月，一页记录。 · <a href="api-docs.php">API 说明</a> · <button type="button" class="quiet" data-install-app>安装到桌面</button></p>
@@ -119,8 +123,8 @@ $logged = isset($_SESSION['user_id'], $config['users'][$_SESSION['user_id']]);
   <div class="dialog-actions"><button id="record-save" class="primary" type="submit">保存记录</button></div>
 </form></dialog>
 <dialog id="export-dialog"><div class="dialog-head"><div><span class="eyebrow">MONTHLY ARCHIVE</span><h3>保存这个月</h3></div><button class="icon-button close-dialog" aria-label="关闭">×</button></div><p class="muted">导出后可交给 OpenClaw 归档到 Get 笔记。</p><div class="export-options"><button data-export="png">月度表格图片 <span>PNG · 适合放进笔记</span></button><button data-export="csv">表格文件 <span>CSV · 可用 Excel 打开</span></button><button data-export="json">完整月度数据 <span>JSON · 含计划、备注和链接</span></button><button data-export="print">打印 / 保存 PDF <span>浏览器打印当前月表</span></button></div></dialog>
-<div id="toast" role="status" hidden></div><script src="assets/tracking-display.js?v=0.7.0" defer></script><script src="assets/app.js?v=0.7.0" defer></script>
+<div id="toast" role="status" hidden></div><script src="assets/tracking-display.js?v=0.7.1" defer></script><script src="assets/app.js?v=0.7.1" defer></script>
 <?php endif; ?>
 <dialog id="install-dialog" aria-labelledby="install-title"><div class="dialog-head"><h3 id="install-title">安装到桌面</h3><button type="button" class="icon-button" id="install-close" aria-label="关闭安装说明">×</button></div><p id="install-status" class="field-help" role="status">安装后可从桌面直接打开，需要联网同步记录。</p><button id="install-confirm" type="button" class="primary full" hidden>安装应用</button><ul class="install-guide"><li><strong>安卓 Chrome：</strong>浏览器菜单 → 安装应用 / 添加到主屏幕。</li><li><strong>Windows Chrome / Edge：</strong>地址栏安装图标，或浏览器菜单 → 安装应用（Edge 中在“应用”菜单）。</li><li><strong>iPhone / iPad：</strong>用 Safari 打开 → 分享 → 添加到主屏幕；如显示“作为网页 App 打开”，保持开启。</li><li><strong>Mac Safari：</strong>文件 → 添加到程序坞。</li></ul><p class="field-help">安装按钮是否出现由浏览器决定；微信等内置浏览器请先在系统浏览器打开。</p></dialog>
-<script src="assets/pwa.js?v=0.7.0" defer></script>
+<script src="assets/pwa.js?v=0.7.1" defer></script>
 </body></html>

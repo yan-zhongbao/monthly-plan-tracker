@@ -35,7 +35,7 @@ function api_spec(): array {
     $outputPatch=['id'=>['type'=>'integer','required'=>true,'description'=>'输出ID（独立于项目ID）。']]+$outputPatch;
     $outputPatch['archived']=['type'=>'boolean','required'=>false,'description'=>'false恢复已移除输出。'];
     return [
-        'name'=>'月度计划与追踪 API','version'=>'1.4','app_version'=>'0.7.0',
+        'name'=>'月度计划与追踪 API','version'=>'1.4','app_version'=>'0.7.1',
         'base_path'=>'api.php','documentation_path'=>'api-docs.php',
         'authentication'=>[
             'type'=>'Bearer','header'=>'Authorization: Bearer <API_TOKEN>',
@@ -75,6 +75,7 @@ function api_spec(): array {
                 'example_body'=>['month'=>'2026-10','title'=>'得到','category'=>'成长','tracked'=>true,'target'=>31,'avoid_duplicate'=>true]],
             ['action'=>'items','method'=>'PATCH','auth'=>true,'description'=>'修改项目，仅传需要改变的字段；不能移动月份。有记录的项目不能移出追踪表。','body'=>$patchFields,'response'=>'{item}',
                 'example_body'=>['id'=>5,'completed'=>true]],
+            ['action'=>'move','method'=>'PATCH','auth'=>true,'description'=>'将每日追踪项目在同一方面内上移或下移一位。保存后月计划、追踪及导出同步排序，沿用计划保留顺序。锁定月份只读。','body'=>['id'=>['type'=>'integer','required'=>true,'description'=>'项目ID。'],'direction'=>['type'=>'string','required'=>true,'description'=>'up 或 down。']],'response'=>'完整 month 数据；边界不变。'],
             ['action'=>'items','method'=>'DELETE','auth'=>true,'description'=>'删除项目及每日记录；保留审计快照。网页不能撤销，谨慎调用。','body'=>['id'=>['type'=>'integer','required'=>true,'description'=>'项目 ID。']],'response'=>'{deleted:true}'],
             ['action'=>'records','method'=>'PUT','auth'=>true,'description'=>'更新同一格子，不产生重复完成次数。日期须属于项目月份，且不能晚于服务器今天；未来日期返回403、FUTURE_DATE。','body'=>[
                 'item_id'=>['type'=>'integer','required'=>false,'description'=>'优先使用项目 ID；item_id 与 title 至少提供一个。'],

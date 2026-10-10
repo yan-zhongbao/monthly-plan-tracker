@@ -13,7 +13,7 @@ if (mysql_backend()) {
         $pdo->exec('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
         $pdo->beginTransaction();
         fwrite($handle,"-- Month Tracker MySQL backup: restore into an EMPTY database\nSET NAMES utf8mb4;\nSET FOREIGN_KEY_CHECKS=0;\n");
-        foreach (['schema_migrations','items','records','audit_log','login_attempts','user_write_locks','month_reviews','outputs'] as $table) {
+        foreach (['schema_migrations','items','records','audit_log','login_attempts','user_write_locks','month_reviews','outputs','remembered_devices'] as $table) {
             $rows = $pdo->query("SELECT * FROM `$table`");
             $create = $pdo->query("SHOW CREATE TABLE `$table`")->fetch(PDO::FETCH_NUM);
             fwrite($handle,$create[1].";\n");

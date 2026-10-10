@@ -33,6 +33,13 @@ function mysql_connect(array $settings): PDO {
     if ($port < 1 || $port > 65535) { throw new RuntimeException('数据库端口无效。'); }
     return new PDO("mysql:host=$host;port=$port;dbname=$name;charset=utf8mb4", $settings['user'], $settings['password'], [PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC, PDO::ATTR_EMULATE_PREPARES=>false]);
 }
+// Shared migrations use SQL supported by both MySQL and SQLite; legacy dialect-specific migrations remain unchanged.
+function migration_files(bool $mysql): array {
+    $base = dirname(__DIR__) . '/migrations';
+    $files = array_merge(glob($mysql ? $base . '/mysql/*.sql' : $base . '/*.sql'), glob($base . '/common/*.sql'));
+    usort($files, fn($a,$b)=>(int)basename($a) <=> (int)basename($b));
+    return $files;
+}
 function mysql_migrate(PDO $pdo): void {
     $lock = 'month_schema_' . hash('sha256', (string)$pdo->query('SELECT DATABASE()')->fetchColumn());
     $lock = substr($lock, 0, 64);
@@ -40,7 +47,7 @@ function mysql_migrate(PDO $pdo): void {
     if ((int)$stmt->fetchColumn() !== 1) { throw new RuntimeException('数据库初始化忙，请稍后重试。'); }
     try {
         $pdo->exec('CREATE TABLE IF NOT EXISTS schema_migrations (version INT PRIMARY KEY, applied_at VARCHAR(40) NOT NULL) ENGINE=InnoDB');
-        foreach (glob(dirname(__DIR__) . '/migrations/mysql/*.sql') as $file) {
+        foreach (migration_files(true) as $file) {
             $version = (int)basename($file);
             if (query('SELECT version FROM schema_migrations WHERE version=?', [$version], $pdo)) { continue; }
             // MySQL DDL commits implicitly. Every migration is retryable; the named lock serializes it.
@@ -69,7 +76,7 @@ function db(): PDO {
         $pdo = new PDO('sqlite:' . $path, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]);
         $pdo->exec('PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
         $pdo->exec('CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)');
-        foreach (glob(dirname(__DIR__) . '/migrations/*.sql') as $file) {
+        foreach (migration_files(false) as $file) {
             $version = (int)basename($file);
             if (query('SELECT version FROM schema_migrations WHERE version = ?', [$version], $pdo)) { continue; }
             $pdo->exec('BEGIN IMMEDIATE');
@@ -107,6 +114,7 @@ function upsert(string $table, array $columns, array $keys, array $values): void
         : ' ON CONFLICT(' . implode(',',$keys) . ') DO UPDATE SET ' . implode(',',array_map(fn($c)=>"$c=excluded.$c",$updates));
     execute($sql,$values);
 }
+require_once __DIR__ . '/remember-login.php';
 function session_boot(): void {
     if (session_status() === PHP_SESSION_ACTIVE) { return; }
     $sessionPath = mysql_backend() ? (config()['storage'] ?? dirname(__DIR__) . '/storage') . '/sessions' : dirname(config()['database']) . '/sessions';
@@ -114,6 +122,14 @@ function session_boot(): void {
     session_name('month_tracker');
     session_start(['save_path' => $sessionPath, 'gc_maxlifetime' => 604800, 'use_strict_mode' => 1, 'cookie_httponly' => true, 'cookie_samesite' => 'Strict', 'cookie_secure' => !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off']);
     if (isset($_SESSION['last_seen']) && time() - $_SESSION['last_seen'] > 604800) { $_SESSION = []; session_regenerate_id(true); }
+    if (isset($_SESSION['user_id'])) {
+        $user = config()['users'][$_SESSION['user_id']] ?? null;
+        $expired = isset($_SESSION['remember_until']) && (int)$_SESSION['remember_until'] <= time();
+        $changed = isset($_SESSION['password_fingerprint']) && (!$user || !hash_equals($_SESSION['password_fingerprint'], hash('sha256', $user['password_hash'])));
+        $revoked = isset($_SESSION['remember_selector']) && !query('SELECT selector FROM remembered_devices WHERE selector=? AND user_id=? AND expires_at>?', [$_SESSION['remember_selector'], $_SESSION['user_id'], time()]);
+        if ($expired || $changed || $revoked || !$user) { $_SESSION = []; session_regenerate_id(true); }
+    }
+    if (!isset($_SESSION['user_id'])) { remember_restore(); }
     $_SESSION['last_seen'] = time();
     $_SESSION['csrf'] ??= bin2hex(random_bytes(32));
 }

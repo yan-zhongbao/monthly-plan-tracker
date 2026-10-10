@@ -52,7 +52,7 @@ try{
   const page=await fetch(base),html=await page.text(),cookie=page.headers.get('set-cookie').split(';')[0];
   const csrf=html.match(/name="csrf-token" content="([^"]+)"/)[1];
   const login=await fetch(base,{method:'POST',redirect:'manual',headers:{Cookie:cookie,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({csrf,password:'notebook-preview-only'})});equal(login.status,302);
-  const sessionCookie=login.headers.get('set-cookie').split(';')[0];
+  const sessionCookie=login.headers.getSetCookie().find(c=>c.startsWith('month_tracker=')).split(';')[0];
   const app=await fetch(base,{headers:{Cookie:sessionCookie}}),appHtml=await app.text();equal(appHtml.includes('tracker-table'),true);
   const sessionCsrf=appHtml.match(/name="csrf-token" content="([^"]+)"/)[1];
   const write=async(data,csrfHeader=sessionCsrf)=>{
@@ -77,7 +77,7 @@ try{
   // Validate snapshot using an independent SQLite connection, including migration version.
   const counts=execFileSync(php,[...extensionArgs,'-r',`$d=new PDO('sqlite:' . '${backup.replaceAll('\\','/').replaceAll("'","\\'")}'); echo json_encode([$d->query('SELECT count(*) FROM items')->fetchColumn(),$d->query('SELECT count(*) FROM schema_migrations')->fetchColumn()]);`],{encoding:'utf8'});
   // PDO SQLite 8.0 returns aggregate values as strings; compare numeric counts.
-  equal(JSON.parse(counts).map(Number),[5,4]);
+  equal(JSON.parse(counts).map(Number),[5,5]);
   const discovery=await fetch(`${base}/api.php?action=discovery`);equal(discovery.status,200);
   const spec=await discovery.json();equal(spec.authentication.type,'Bearer');equal(spec.endpoints.some(e=>e.action==='suggestions'),true);
   equal(spec.categories,['成长','健康','家庭','财务','自我实现','社交','娱乐','职业']);
@@ -186,6 +186,49 @@ try{
   equal((await api('month','GET',null,credentials.token1,{month:'2027-03'}))[1].outputs.length,0);
   const finalBackup=resolve(folder,'outputs-backup.sqlite');execFileSync(php,[...extensionArgs,resolve(root,'scripts/backup.php'),finalBackup],{env});
   const outputCount=execFileSync(php,[...extensionArgs,'-r',`$d=new PDO('sqlite:' . '${finalBackup.replaceAll('\\','/')}');echo $d->query('SELECT count(*) FROM outputs')->fetchColumn();`],{encoding:'utf8'});equal(Number(outputCount),4);
+  // Remembered devices survive lost PHP session files; credentials are revocable.
+  const cookiesOf=response=>response.headers.getSetCookie();
+  const deviceLogin=async(remember=true)=>{
+    const initial=await fetch(base),text=await initial.text();
+    const initialCookie=cookiesOf(initial).find(c=>c.startsWith('month_tracker=')).split(';')[0];
+    const csrf=text.match(/name="csrf-token" content="([^"]+)"/)[1];
+    const result=await fetch(base,{method:'POST',redirect:'manual',headers:{Cookie:initialCookie,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({csrf,password:'notebook-preview-only',...(remember?{remember:'1'}:{})})});
+    equal(result.status,302);return result;
+  };
+  const deviceA=await deviceLogin(),deviceB=await deviceLogin();
+  const rememberOf=response=>cookiesOf(response).find(c=>/^month_tracker_remember=[a-f0-9]{32}\./.test(c));
+  const remembered=rememberOf(deviceA),rememberCookie=remembered.split(';')[0];
+  equal(remembered.includes('HttpOnly'),true);equal(remembered.includes('SameSite=Lax'),true);
+  const expires=Date.parse(remembered.match(/expires=([^;]+)/i)[1]);equal(Math.abs(expires-Date.now()-90*86400000)<10000,true);
+  equal(rememberOf(await deviceLogin(false)),undefined);
+  const restored=await fetch(base,{headers:{Cookie:rememberCookie}}),restoredHtml=await restored.text();equal(restoredHtml.includes('tracker-table'),true);
+  equal((await (await fetch(base)).text()).includes('tracker-table'),false);
+  const restoredSession=cookiesOf(restored).find(c=>c.startsWith('month_tracker=')).split(';')[0];
+  const restoredCsrf=restoredHtml.match(/name="csrf-token" content="([^"]+)"/)[1];
+  const rememberedApi=await fetch(`${base}/api.php?action=month&month=2026-10`,{headers:{Cookie:rememberCookie}});equal(rememberedApi.status,200);
+  const tampered=rememberCookie.slice(0,-1)+(rememberCookie.endsWith('0')?'1':'0');equal((await (await fetch(base,{headers:{Cookie:tampered}})).text()).includes('tracker-table'),false);
+  const logout=await fetch(base,{method:'POST',redirect:'manual',headers:{Cookie:`${restoredSession}; ${rememberCookie}`,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({csrf:restoredCsrf,logout:'1'})});equal(logout.status,302);
+  equal((await (await fetch(base,{headers:{Cookie:rememberCookie}})).text()).includes('tracker-table'),false);
+  equal((await (await fetch(base,{headers:{Cookie:restoredSession}})).text()).includes('tracker-table'),false);
+  const rememberB=rememberOf(deviceB).split(';')[0];equal((await (await fetch(base,{headers:{Cookie:rememberB}})).text()).includes('tracker-table'),true);
+  const dbMutation=sql=>execFileSync(php,[...extensionArgs,'-r',`require '${resolve(root,'app/bootstrap.php').replaceAll('\\','/')}'; execute(${JSON.stringify(sql)});`],{env});
+  dbMutation('UPDATE remembered_devices SET expires_at=1');
+  equal((await (await fetch(base,{headers:{Cookie:rememberB}})).text()).includes('tracker-table'),false);
+  const deviceC=await deviceLogin(),rememberC=rememberOf(deviceC).split(';')[0];
+  dbMutation("UPDATE remembered_devices SET password_fingerprint='invalid'");
+  equal((await (await fetch(base,{headers:{Cookie:rememberC}})).text()).includes('tracker-table'),false);
+  const titlePair=['多邻国ES排序测试','跟读ES排序测试'];
+  const sortA=(await api('items','POST',{month:'2027-04',title:titlePair[0],category:'成长',tracked:true,sort_order:0}))[1].item;
+  const sortHealth=(await api('items','POST',{month:'2027-04',title:'健康排序测试',category:'健康',tracked:true,sort_order:0}))[1].item;
+  const sortB=(await api('items','POST',{month:'2027-04',title:titlePair[1],category:'成长',tracked:true,sort_order:0}))[1].item;
+  equal((await api('move','PATCH',{id:sortB.id,direction:'up'}))[1].items.map(i=>i.title),[titlePair[1],titlePair[0],'健康排序测试']);
+  equal((await api('move','PATCH',{id:sortB.id,direction:'up'}))[1].items.map(i=>i.title),[titlePair[1],titlePair[0],'健康排序测试']);
+  equal((await api('move','PATCH',{id:sortB.id,direction:'down'}))[1].items.map(i=>i.title),[...titlePair,'健康排序测试']);
+  equal((await api('move','PATCH',{id:sortB.id,direction:'wrong'}))[0],400);
+  equal((await api('move','PATCH',{id:sortB.id,direction:'up'},credentials.token2))[0],404);
+  equal((await api('copy','POST',{from:'2027-04',to:'2027-05'}))[1].items.map(i=>i.title),[...titlePair,'健康排序测试']);
+  equal((await api('review','PATCH',{month:'2026-09',completed:true}))[0],200);
+  equal((await api('move','PATCH',{id:previousItem,direction:'up'}))[0],403);
   console.log(`PASS: ${assertions} integration assertions (PHP + SQLite + HTTP + session/CSRF + backup).`);
 }catch(error){console.error(error);console.error(stderr.slice(-3500));process.exitCode=1;}
 finally{server.kill();}
