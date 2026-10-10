@@ -25,3 +25,22 @@
 .login-card .remember-login{display:flex;align-items:center;gap:8px;font-size:13px;margin:14px 0}.login-card .remember-login input{width:16px;height:16px;margin:0;accent-color:var(--green)}
 
 .plan-move{display:flex;gap:3px;margin-left:auto;flex-shrink:0}.plan-move button{width:30px;height:32px;padding:0;background:transparent;border:1px solid var(--line);border-radius:5px;color:var(--green);font-size:17px}.plan-move button:disabled{opacity:.25;cursor:default}.plan-entry-content{min-width:0}
+
+/* Month-plan cards flow down each column; a category always remains intact. */
+.plan-grid{display:block;columns:4 250px;column-gap:14px;column-fill:balance}
+.plan-grid>.plan-card{display:inline-block;vertical-align:top;width:100%;break-inside:avoid;page-break-inside:avoid;margin:0 0 14px;min-height:0;padding:12px}
+.plan-card-header{padding-bottom:8px;margin-bottom:2px}
+.plan-entry{align-items:center;gap:7px;padding:5px 0;min-height:30px}
+.plan-entry-title{font-size:12px;line-height:18px;overflow-wrap:anywhere}
+.plan-badge{margin-top:0;font-size:9px;line-height:14px;padding:0 4px;vertical-align:middle}
+.plan-entry-note{margin-top:2px;line-height:1.5}
+.plan-move{gap:2px}
+.plan-move button{width:22px;height:22px;font-size:14px;line-height:20px;border-radius:4px}
+.plan-grid .plan-card>.quiet{padding:6px 0;font-size:11px}
+.plan-empty{padding:10px 0}
+@media(max-width:640px){
+ .plan-grid{columns:auto}
+ .plan-grid>.plan-card{display:block;break-inside:auto;margin-bottom:12px;padding:12px}
+ .plan-entry{min-height:34px;padding:4px 0}
+ .plan-move button{width:28px;height:28px;font-size:16px;line-height:26px}
+}

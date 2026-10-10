@@ -1,8 +1,8 @@
 'use strict';
 const ROOT=new URL('./',self.location.href);
 const PREFIX='month-tracker-static-'+encodeURIComponent(ROOT.pathname)+'-';
-const CACHE=PREFIX+'0.7.1';
-const FILES=['assets/app.css?v=0.7.1','assets/app.js?v=0.7.1','assets/tracking-display.js?v=0.7.1','assets/pwa.js?v=0.7.1','assets/icon-192.png','assets/icon-512.png','assets/apple-touch-icon.png'].map(path=>new URL(path,ROOT).href);
+const CACHE=PREFIX+'0.7.2';
+const FILES=['assets/app.css?v=0.7.2','assets/app.js?v=0.7.2','assets/tracking-display.js?v=0.7.2','assets/pwa.js?v=0.7.2','assets/icon-192.png','assets/icon-512.png','assets/apple-touch-icon.png'].map(path=>new URL(path,ROOT).href);
 const ALLOWED=new Set(FILES);
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(FILES)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key.startsWith(PREFIX)&&key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim())));

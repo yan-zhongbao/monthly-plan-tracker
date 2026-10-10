@@ -35,7 +35,7 @@ function api_spec(): array {
     $outputPatch=['id'=>['type'=>'integer','required'=>true,'description'=>'输出ID（独立于项目ID）。']]+$outputPatch;
     $outputPatch['archived']=['type'=>'boolean','required'=>false,'description'=>'false恢复已移除输出。'];
     return [
-        'name'=>'月度计划与追踪 API','version'=>'1.4','app_version'=>'0.7.1',
+        'name'=>'月度计划与追踪 API','version'=>'1.4','app_version'=>'0.7.2',
         'base_path'=>'api.php','documentation_path'=>'api-docs.php',
         'authentication'=>[
             'type'=>'Bearer','header'=>'Authorization: Bearer <API_TOKEN>',
