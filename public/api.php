@@ -5,6 +5,7 @@ require dirname(__DIR__) . '/app/api-spec.php';
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['action'] ?? '') === 'discovery') { respond(api_spec()); }
 try {
     [$user, $source] = auth();
+    if ($source==='manual') { header('X-CSRF-Token: ' . $_SESSION['csrf']); }
     $pdo = db();
     $action = $_GET['action'] ?? 'month';
     $method = $_SERVER['REQUEST_METHOD'];

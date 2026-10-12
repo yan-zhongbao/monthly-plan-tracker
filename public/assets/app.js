@@ -2,11 +2,15 @@
 const $ = id => document.getElementById(id);
 const categories = ['成长','健康','家庭','财务','自我实现','社交','娱乐','职业'];
 const categoryEn = ['GROWTH','HEALTH','FAMILY','FINANCE','SELF-FULFILLMENT','SOCIAL','LEISURE','CAREER'];
-const dateParts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date()).map(p=>[p.type,p.value]));
-const today = `${dateParts.year}-${dateParts.month}-${dateParts.day}`;
+function currentToday(){
+  const parts=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date()).map(p=>[p.type,p.value]));
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+let today=currentToday();
 let month = today.slice(0,7), data = {items:[],records:[]}, recordMap = new Map(), view = 'tracker';
 let activeRecord = null, activeUnplanned = false, loadId = 0, busyCells = new Set(), loading=false;
 let historySuggestions=[],suggestionRequest=0;
+let pendingWrites=0,writeEpoch=0,liveRefreshBusy=false,lastLiveRefresh=0,livePointerDown=false,liveInteractionUntil=0;
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const dateFor = day => `${month}-${String(day).padStart(2,'0')}`;
 const daysInMonth = () => new Date(Number(month.slice(0,4)),Number(month.slice(5)),0).getDate();
@@ -35,12 +39,68 @@ function renderAccess(){
   $('view-hint').textContent=readOnly()?'只读 · 点击查看详情，仍可导出':view==='tracker'?'轻点打勾 · 长按 / 右键添加备注':'八个方面可以留白 · 只有选中的项目进入追踪表';
 }
 function toast(message) { $('toast').textContent=message; $('toast').hidden=false; clearTimeout(toast.timer); toast.timer=setTimeout(()=>$('toast').hidden=true,4500); }
-async function api(action,method='GET',payload=null,query={}) {
-  const params = new URLSearchParams({action,...query});
-  const response = await fetch(`api.php?${params}`, {method,credentials:'same-origin',headers: {'Content-Type':'application/json','X-CSRF-Token':document.querySelector('meta[name=csrf-token]').content},body:payload===null ? undefined : JSON.stringify(payload)});
-  const result = await response.json();
-  if (!response.ok) { if(response.status===401) location.reload(); throw new Error(result.error || '请求失败，请重试。'); }
-  return result;
+async function api(action,method='GET',payload=null,query={},options={}) {
+  const params=new URLSearchParams({action,...query});
+  const writing=!['GET','HEAD'].includes(method);
+  if(writing){pendingWrites++;writeEpoch++;}
+  try{
+    const response=await fetch(`api.php?${params}`,{method,credentials:'same-origin',cache:'no-store',signal:options.signal,headers:{'Content-Type':'application/json','X-CSRF-Token':document.querySelector('meta[name=csrf-token]').content},body:payload===null?undefined:JSON.stringify(payload)});
+    const csrf=response.headers.get('X-CSRF-Token');
+    if(csrf){
+      document.querySelector('meta[name=csrf-token]').content=csrf;
+      document.querySelectorAll('input[name=csrf]').forEach(input=>input.value=csrf);
+    }
+    const result=await response.json();
+    if(!response.ok){
+      if(response.status===401&&!options.background)location.reload();
+      const error=new Error(result.error||'请求失败，请重试。');error.status=response.status;throw error;
+    }
+    return result;
+  }finally{if(writing)pendingWrites--;}
+}
+function canLiveRefresh(){
+  return !document.hidden&&navigator.onLine!==false&&!loading&&!pendingWrites&&!busyCells.size
+    &&!livePointerDown&&Date.now()>=liveInteractionUntil
+    &&!document.querySelector('dialog[open]')
+    &&!document.activeElement?.matches('input,textarea,select,[contenteditable="true"]');
+}
+async function refreshLive(){
+  if(!canLiveRefresh()||liveRefreshBusy||Date.now()-lastLiveRefresh<1000)return;
+  liveRefreshBusy=true;lastLiveRefresh=Date.now();
+  const requestedMonth=month,requestedLoad=loadId,requestedWrite=writeEpoch;
+  const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),10000);
+  const current=()=>month===requestedMonth&&loadId===requestedLoad&&writeEpoch===requestedWrite&&canLiveRefresh();
+  try{
+    const result=await api('month','GET',null,{month:requestedMonth},{background:true,signal:controller.signal});
+    if(!current())return;
+    const nextToday=currentToday();
+    if(JSON.stringify(result)!==JSON.stringify(data)||nextToday!==today){
+      const table=$('table-scroll'),plan=$('plan-grid');
+      const scroll={x:window.scrollX,y:window.scrollY,left:table.scrollLeft,top:table.scrollTop,plan:plan.scrollLeft};
+      const active=document.activeElement;
+      const focusAttrs=['data-item','data-date','data-plan-edit','data-plan-check','data-move-item','data-direction','data-output-id','data-output-date','data-event-item','data-event-date'];
+      const focusSelector=focusAttrs.filter(name=>active?.hasAttribute(name)).map(name=>`[${name}="${CSS.escape(active.getAttribute(name))}"]`).join('');
+      data=result;today=nextToday;rebuildRecords();render();
+      table.scrollLeft=scroll.left;table.scrollTop=scroll.top;plan.scrollLeft=scroll.plan;
+      window.scrollTo(scroll.x,scroll.y);
+      if(focusSelector)document.querySelector(focusSelector)?.focus({preventScroll:true});
+      $('save-state').textContent='已自动更新';
+    }else if(['同步暂时中断，稍后自动重试','登录已失效，请刷新后登录'].includes($('save-state').textContent)){
+      $('save-state').textContent='已更新';
+    }
+  }catch(error){
+    if(current())$('save-state').textContent=error.status===401?'登录已失效，请刷新后登录':'同步暂时中断，稍后自动重试';
+  }finally{clearTimeout(timeout);liveRefreshBusy=false;}
+}
+function startLiveRefresh(){
+  setInterval(refreshLive,15000);
+  document.addEventListener('visibilitychange',refreshLive);
+  for(const event of ['focus','pageshow','online'])window.addEventListener(event,refreshLive);
+  window.addEventListener('pointerdown',()=>{livePointerDown=true;liveInteractionUntil=Date.now()+1500;},{passive:true});
+  for(const event of ['pointerup','pointercancel'])window.addEventListener(event,()=>{livePointerDown=false;liveInteractionUntil=Date.now()+1500;},{passive:true});
+  window.addEventListener('blur',()=>{livePointerDown=false;});
+  window.addEventListener('keydown',()=>{liveInteractionUntil=Date.now()+1500;});
+  document.addEventListener('close',()=>setTimeout(refreshLive,1600),true);
 }
 async function load(recenter=false) {
   const id=++loadId, requestedMonth=month;
@@ -558,3 +618,4 @@ $('output-archives').onclick=async()=>{
 window.addEventListener('resize',schedulePlanLayout);
 if(document.fonts)document.fonts.ready.then(schedulePlanLayout);
 load(true);
+startLiveRefresh();

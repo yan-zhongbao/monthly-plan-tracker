@@ -55,6 +55,9 @@ try{
   const sessionCookie=login.headers.getSetCookie().find(c=>c.startsWith('month_tracker=')).split(';')[0];
   const app=await fetch(base,{headers:{Cookie:sessionCookie}}),appHtml=await app.text();equal(appHtml.includes('tracker-table'),true);
   const sessionCsrf=appHtml.match(/name="csrf-token" content="([^"]+)"/)[1];
+  const csrfResponse=await fetch(`${base}/api.php?action=month&month=2026-10`,{headers:{Cookie:sessionCookie}});
+  equal(csrfResponse.headers.get('X-CSRF-Token'),sessionCsrf);
+  equal((await fetch(`${base}/api.php?action=month&month=2026-10`,{headers:{Authorization:`Bearer ${credentials.token1}`}})).headers.get('X-CSRF-Token'),null);
   const write=async(data,csrfHeader=sessionCsrf)=>{
     const response=await fetch(`${base}/api.php?action=records`,{method:'PUT',headers:{Cookie:sessionCookie,'Content-Type':'application/json','X-CSRF-Token':csrfHeader},body:JSON.stringify(data)});return [response.status,await response.json()];
   };
