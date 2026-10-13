@@ -62,3 +62,8 @@
 .event-row .event-add:not(:disabled):hover{background:#426e5510}
 .event-row .event-add:focus-visible{outline:2px solid var(--green);outline-offset:-2px}
 @media print{.event-row .event-add{display:none}}
+
+/* Weekend headers use text color; their backgrounds match ordinary date headers. */
+.table-scroll thead th.weekend{color:#9a724c}
+.table-scroll thead th.weekend:not(.today){background:#f8f8ef}
+.table-scroll thead th.weekend:not(.today) .day-number{color:#9a724c}

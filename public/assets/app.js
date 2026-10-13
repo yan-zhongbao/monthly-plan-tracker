@@ -155,8 +155,8 @@ function renderTracker(){
     html+=groupHtml('计划外记录',items.filter(i=>i.unplanned));
   }
   html+=`<tr class="tracking-row event-row"><th class="name-cell" scope="row">一次性事件</th>${Array.from({length:days},(_,i)=>{
-    const date=dateFor(i+1),done=events.filter(item=>getRecord(item.id,date)?.completed);
-    return `<td class="${date===today?'today':''}"><div class="event-cell">${done.map(item=>`<button class="event-mark" data-event-item="${item.id}" data-date="${date}" title="${esc(item.title+(getRecord(item.id,date)?.note?'：'+getRecord(item.id,date).note:''))}" aria-label="${esc(item.title)}，查看详情">${markHtml(item)}</button>`).join('')}<button class="event-add" data-event-date="${date}" aria-label="${i+1}日添加一次性事件" title="选择当天完成的事项"></button></div></td>`;
+    const date=dateFor(i+1),weekday=new Date(`${date}T12:00:00`).getDay(),done=events.filter(item=>getRecord(item.id,date)?.completed);
+    return `<td class="${weekday===1?'week-start':''} ${weekday===0||weekday===6?'weekend':''} ${date===today?'today':''}"><div class="event-cell">${done.map(item=>`<button class="event-mark" data-event-item="${item.id}" data-date="${date}" title="${esc(item.title+(getRecord(item.id,date)?.note?'：'+getRecord(item.id,date).note:''))}" aria-label="${esc(item.title)}，查看详情">${markHtml(item)}</button>`).join('')}<button class="event-add" data-event-date="${date}" aria-label="${i+1}日添加一次性事件" title="选择当天完成的事项"></button></div></td>`;
   }).join('')}<td class="sum-cell">${events.filter(i=>dayCount(i.id)>0).length} / ${events.length}</td></tr>`;
   html+=outputRow(days);
   $('tracker-table').innerHTML=html+'</tbody>';
@@ -571,8 +571,8 @@ function outputMark(letter){return markHtml({title:'输出',symbol:letter,once_o
 function outputEntries(){return [...(data.outputs??[]),...(data.legacy_outputs??[]).map(r=>({...r,legacy:true,title:r.completed?'输出完成':'旧输出备注（未完成）'}))];}
 function outputSummary(){const old=(data.legacy_outputs??[]).filter(r=>r.completed).length;return `输出 · ${(data.outputs??[]).length} 篇${old?' · 旧记录 '+old+' 天':''}`;}
 function outputRow(days){return `<tr class="tracking-row event-row output-row"><th class="name-cell" scope="row">输出</th>${Array.from({length:days},(_,index)=>{
-  const date=dateFor(index+1),entries=outputEntries().filter(o=>o.date===date);
-  return `<td class="${date===today?'today':''} ${date>today?'future-date':''}"><div class="event-cell">${entries.map(o=>`<button class="event-mark" ${o.legacy?`data-output-legacy="${o.item_id}"`:`data-output-id="${o.id}"`} data-date="${date}" title="${esc((o.legacy?'旧记录':data.output_types[o.type])+'：'+o.title+(o.note?'；'+o.note:''))}" aria-label="${esc(o.title)}，查看输出">${outputMark(outputLetter(o))}</button>`).join('')}<button class="event-add" data-output-date="${date}" aria-label="${index+1}日添加输出" ${dateReadOnly(date)?'disabled':''} title="${date>today?'未来日期只读':'添加一篇输出，可添加多篇'}"></button></div></td>`;
+  const date=dateFor(index+1),weekday=new Date(`${date}T12:00:00`).getDay(),entries=outputEntries().filter(o=>o.date===date);
+  return `<td class="${weekday===1?'week-start':''} ${weekday===0||weekday===6?'weekend':''} ${date===today?'today':''} ${date>today?'future-date':''}"><div class="event-cell">${entries.map(o=>`<button class="event-mark" ${o.legacy?`data-output-legacy="${o.item_id}"`:`data-output-id="${o.id}"`} data-date="${date}" title="${esc((o.legacy?'旧记录':data.output_types[o.type])+'：'+o.title+(o.note?'；'+o.note:''))}" aria-label="${esc(o.title)}，查看输出">${outputMark(outputLetter(o))}</button>`).join('')}<button class="event-add" data-output-date="${date}" aria-label="${index+1}日添加输出" ${dateReadOnly(date)?'disabled':''} title="${date>today?'未来日期只读':'添加一篇输出，可添加多篇'}"></button></div></td>`;
 }).join('')}<td class="sum-cell" title="${esc(outputSummary())}">${(data.outputs??[]).length} 篇${(data.legacy_outputs??[]).some(r=>r.completed)?'<span class="row-target">＋旧记录</span>':''}</td></tr>`;}
 function bindOutputs(){
   document.querySelectorAll('[data-output-date]').forEach(b=>b.onclick=()=>openOutput(null,b.dataset.outputDate));
