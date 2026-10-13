@@ -54,3 +54,11 @@
  .plan-grid{display:block;overflow:visible;padding-bottom:0}
  .plan-grid>.plan-card{width:100%;margin:0 0 12px}
 }
+
+/* A blank add button covers the cell; existing marks sit above it as separate buttons. */
+.event-row td:not(.sum-cell){position:relative;isolation:isolate}
+.event-row .event-add{position:absolute;inset:0;z-index:0;display:block;width:100%;height:100%;padding:0;margin:0;border-radius:0;touch-action:pan-x pan-y}
+.event-row .event-mark{position:relative;z-index:1;flex-shrink:0}
+.event-row .event-add:not(:disabled):hover{background:#426e5510}
+.event-row .event-add:focus-visible{outline:2px solid var(--green);outline-offset:-2px}
+@media print{.event-row .event-add{display:none}}
