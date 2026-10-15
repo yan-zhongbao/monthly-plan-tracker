@@ -9,6 +9,7 @@ try {
     $pdo = db();
     $action = $_GET['action'] ?? 'month';
     $method = $_SERVER['REQUEST_METHOD'];
+    if ($action==='journals') { handle_journals($user,$source,$method); }
     if ($action==='outputs') { handle_outputs($user,$source,$method); }
     if ($method === 'GET') {
         if ($action === 'suggestions') {

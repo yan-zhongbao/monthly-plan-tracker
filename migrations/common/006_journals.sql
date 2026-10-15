@@ -1,0 +1,10 @@
+CREATE TABLE IF NOT EXISTS journals (
+ user_id INTEGER NOT NULL,
+ date CHAR(10) NOT NULL,
+ content MEDIUMTEXT NOT NULL,
+ revision INTEGER NOT NULL,
+ manual_lock INTEGER NOT NULL DEFAULT 0,
+ source VARCHAR(32) NOT NULL,
+ updated_at VARCHAR(40) NOT NULL,
+ PRIMARY KEY (user_id,date)
+);

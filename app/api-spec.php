@@ -35,7 +35,7 @@ function api_spec(): array {
     $outputPatch=['id'=>['type'=>'integer','required'=>true,'description'=>'输出ID（独立于项目ID）。']]+$outputPatch;
     $outputPatch['archived']=['type'=>'boolean','required'=>false,'description'=>'false恢复已移除输出。'];
     return [
-        'name'=>'月度计划与追踪 API','version'=>'1.4','app_version'=>'0.7.6',
+        'name'=>'月度计划与追踪 API','version'=>'1.5','app_version'=>'0.8.1',
         'base_path'=>'api.php','documentation_path'=>'api-docs.php',
         'authentication'=>[
             'type'=>'Bearer','header'=>'Authorization: Bearer <API_TOKEN>',
@@ -53,6 +53,9 @@ function api_spec(): array {
             '每篇输出使用 PUT outputs + external_id，例如 reading-agent:note-123；同日同类型可有多篇。先查询后纠正，不使用每日 records 来替代文章记录。',
         ],
         'endpoints'=>[
+            ['action'=>'journals','method'=>'GET','auth'=>true,'description'=>'按date读取一篇日记（不存在时journal=null）；省略date则按month查询。','query'=>$month+['date'=>['type'=>'string','required'=>false,'description'=>'YYYY-MM-DD，提供时优先按该日期查询。']],'response'=>'单日{date,journal,access,read_only}；按月{month,journals,access}'],
+            ['action'=>'journals','method'=>'PUT','auth'=>true,'description'=>'按日期创建或替换日记全文。同一日期每用户唯一；保留换行空格。需先GET并传revision，不存在时0。相同内容重试不递增版本。','body'=>['date'=>['type'=>'string','required'=>true,'description'=>'YYYY-MM-DD，须可编辑且不晚于今天。'],'content'=>['type'=>'string','required'=>true,'description'=>'纯文本，最多约10000字，空字符串清空但保留版本。'],'revision'=>['type'=>'integer','required'=>true,'description'=>'GET所得版本，缺省记录为0，版本冲突409。'],'force'=>['type'=>'boolean','required'=>false,'description'=>'明确意图覆盖手动保护时true；不能绕过版本或月份锁定。']],'response'=>'{journal,created?,unchanged?}；journal含date/content/revision/manual_lock/source/updated_at。','example_body'=>['date'=>'2026-10-15','content'=>'今天的一点记录。','revision'=>0]],
+
             ['action'=>'outputs','method'=>'GET','auth'=>true,'description'=>'查询当月输出。旧输出勾选单独返回legacy_outputs，不猜测类型或标题。','query'=>$month+['date'=>['type'=>'string','required'=>false,'description'=>'按日期筛选新输出。'],'type'=>['type'=>'string','required'=>false,'description'=>'按输出类型筛选新输出。'],'include_archived'=>['type'=>'string','required'=>false,'description'=>'true包含已移除输出，默认不包含。']],'response'=>'{month,access,types,outputs,legacy_outputs}'],
             ['action'=>'outputs','method'=>'PUT','auth'=>true,'description'=>'按external_id创建或更新一篇输出。相同内容重试不重复新增、不递增版本。已移除内容不会自动复活。','body'=>array_replace($outputFields,['external_id'=>array_replace($outputFields['external_id'],['required'=>true])]),'response'=>'201 {output,created:true} 或200 {output,created:false,unchanged?}；date/type/title更新已存在记录时可省略。','example_body'=>['external_id'=>'reading-agent:note-123','date'=>'2026-10-08','type'=>'book_note','title'=>'《示例书》读书笔记','links'=>['https://example.com/note/123']]],
             ['action'=>'outputs','method'=>'POST','auth'=>true,'description'=>'手动新增一篇输出。建议自动agent使用PUT和稳定external_id。POST未提供external_id时每次新增一篇。','body'=>$outputFields,'response'=>'{output,created}'],
@@ -63,7 +66,7 @@ function api_spec(): array {
                 'completed'=>['type'=>'boolean','required'=>true,'description'=>'true 锁定，false 重新开放。'],
             ],'response'=>'{month, access: {current_month,previous_month,review_completed,read_only,can_review,reason}}','example_body'=>['month'=>'2026-09','completed'=>true]],
             ['action'=>'discovery','method'=>'GET','auth'=>false,'description'=>'机器可读的完整接口清单（本 JSON）。','query'=>[],'response'=>'本接口说明对象。'],
-            ['action'=>'month','method'=>'GET','auth'=>true,'description'=>'完整月计划与追踪表。','query'=>$month,'response'=>'{month,timezone,access,items,records,outputs,output_types,legacy_outputs}'],
+            ['action'=>'month','method'=>'GET','auth'=>true,'description'=>'完整月计划与追踪表。','query'=>$month,'response'=>'{month,timezone,access,items,records,outputs,output_types,legacy_outputs,journals}'],
             ['action'=>'plans','method'=>'GET','auth'=>true,'description'=>'原月计划，不含计划外事项。','query'=>$month,'response'=>'{month, access, items}'],
             ['action'=>'projects','method'=>'GET','auth'=>true,'description'=>'追踪项目，包括计划外事项。','query'=>$month,'response'=>'{month, access, items}'],
             ['action'=>'records','method'=>'GET','auth'=>true,'description'=>'当月每日格子记录。','query'=>$month,'response'=>'{month, access, records}'],

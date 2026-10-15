@@ -78,7 +78,7 @@ async function refreshLive(){
       const table=$('table-scroll'),plan=$('plan-grid');
       const scroll={x:window.scrollX,y:window.scrollY,left:table.scrollLeft,top:table.scrollTop,plan:plan.scrollLeft};
       const active=document.activeElement;
-      const focusAttrs=['data-item','data-date','data-plan-edit','data-plan-check','data-move-item','data-direction','data-output-id','data-output-date','data-event-item','data-event-date'];
+      const focusAttrs=['data-item','data-date','data-plan-edit','data-plan-check','data-move-item','data-direction','data-output-id','data-output-date','data-event-item','data-event-date','data-journal-date'];
       const focusSelector=focusAttrs.filter(name=>active?.hasAttribute(name)).map(name=>`[${name}="${CSS.escape(active.getAttribute(name))}"]`).join('');
       data=result;today=nextToday;rebuildRecords();render();
       table.scrollLeft=scroll.left;table.scrollTop=scroll.top;plan.scrollLeft=scroll.plan;
@@ -146,7 +146,7 @@ function renderTracker(){
   let html=`<colgroup><col class="name-col">${Array.from({length:days},()=>'<col class="day-col">').join('')}<col class="sum-col"></colgroup><thead><tr><th class="name-cell">追踪项目</th>`;
   for(let day=1;day<=days;day++){
     const date=dateFor(day),weekday=new Date(`${date}T12:00:00`).getDay();
-    html+=`<th scope="col" class="${weekday===1?'week-start':''} ${weekday===0||weekday===6?'weekend':''} ${date===today?'today':''}"><span class="day-number">${day}</span>周${weekdays[weekday]}</th>`;
+    html+=`<th scope="col" class="${weekday===1?'week-start':''} ${weekday===0||weekday===6?'weekend':''} ${date===today?'today':''}"><button type="button" class="date-heading" data-journal-date="${date}" aria-label="${date}，${(data.journals??[]).some(j=>j.date===date&&j.content.trim())?'有日记，点击查看':'打开日记'}" title="点击记录当日日记"><span class="day-number">${day}</span>周${weekdays[weekday]}${(data.journals??[]).some(j=>j.date===date&&j.content.trim())?'<span class="journal-dot" aria-hidden="true"></span>':''}</button></th>`;
   }
   html+='<th class="sum-cell">完成 / 目标</th></tr></thead><tbody>';
   if(!items.length&&!events.length&&!outputEntries().length) html+=`<tr><td colspan="${days+2}" class="empty-row"><p>这个月还是一张空白页。<br>添加需要每天打勾的项目，或沿用上月计划。</p><button class="primary" id="empty-add">＋ 添加追踪项目</button></td></tr>`;
@@ -161,6 +161,7 @@ function renderTracker(){
   html+=outputRow(days);
   $('tracker-table').innerHTML=html+'</tbody>';
   bindOutputs();
+  document.querySelectorAll('[data-journal-date]').forEach(button=>button.onclick=()=>openJournal(button.dataset.journalDate));
   $('tracker-table').querySelectorAll('.tracking-row').forEach((row,index)=>row.classList.toggle('stripe',index%2===1));
   document.querySelectorAll('[data-event-date]').forEach(b=>{b.disabled=dateReadOnly(b.dataset.eventDate);b.onclick=()=>openEvents(b.dataset.eventDate);if(b.dataset.eventDate>today)b.title='未来日期只读';});
   document.querySelectorAll('[data-event-item]').forEach(b=>b.onclick=()=>openRecord(Number(b.dataset.eventItem),b.dataset.date));
@@ -614,6 +615,56 @@ $('output-archives').onclick=async()=>{
     $('output-archive-dialog').showModal();
   }catch(error){toast(error.message);}
 };
+
+
+let activeJournal=null,journalOriginal='',journalBusy=false,journalRequest=0;
+function journalDirty(){return !!activeJournal&&!$('journal-content').readOnly&&$('journal-content').value!==journalOriginal;}
+function closeJournalNow(){
+  journalRequest++;activeJournal=null;$('journal-unsaved').close();$('journal-dialog').close();
+}
+function requestJournalClose(){
+  if(journalBusy)return;
+  if(journalDirty()){if(!$('journal-unsaved').open)$('journal-unsaved').showModal();}else closeJournalNow();
+}
+async function openJournal(date){
+  if(loading||journalBusy)return;
+  const request=++journalRequest;activeJournal=null;journalOriginal='';
+  $('journal-heading').textContent=`${date} · 当日日记`;$('journal-content').value='';$('journal-content').readOnly=true;
+  $('journal-save').hidden=false;$('journal-save').disabled=true;$('journal-status').textContent='正在读取…';
+  $('journal-dialog').showModal();
+  try{
+    const result=await api('journals','GET',null,{date});
+    if(request!==journalRequest||!$('journal-dialog').open)return;
+    activeJournal=result.journal??{date,content:'',revision:0};journalOriginal=activeJournal.content;
+    $('journal-content').value=journalOriginal;journalOriginal=$('journal-content').value;$('journal-content').readOnly=result.read_only;
+    $('journal-save').hidden=result.read_only;$('journal-save').disabled=false;
+    $('journal-status').textContent=result.read_only?(result.access.reason||'未来日期只读。'):'保存在服务器；最多10000字。';
+    $('journal-content').focus();
+  }catch(error){if(request===journalRequest)$('journal-status').textContent='读取失败：'+error.message;}
+}
+async function saveJournal(){
+  if(journalBusy||!activeJournal||$('journal-content').readOnly)return false;
+  if(!journalDirty()){closeJournalNow();return true;}
+  journalBusy=true;$('journal-content').readOnly=true;$('journal-save').disabled=true;$('journal-status').textContent='保存中…';
+  try{
+    const result=await api('journals','PUT',{date:activeJournal.date,content:$('journal-content').value,revision:activeJournal.revision});
+    journalOriginal=result.journal.content;activeJournal=result.journal;
+    if(result.journal.date.slice(0,7)===month){
+      data.journals=[...(data.journals??[]).filter(j=>j.date!==result.journal.date),result.journal].sort((a,b)=>a.date.localeCompare(b.date));
+      const top=$('table-scroll').scrollTop;renderTracker();$('table-scroll').scrollTop=top;
+    }
+    closeJournalNow();toast('日记已保存');return true;
+  }catch(error){$('journal-status').textContent=error.message+'（当前草稿仍保留）';return false;}
+  finally{journalBusy=false;$('journal-save').disabled=false;if(activeJournal)$('journal-content').readOnly=false;}
+}
+$('journal-form').onsubmit=event=>{event.preventDefault();saveJournal();};
+$('journal-back').onclick=requestJournalClose;$('journal-close').onclick=requestJournalClose;
+$('journal-dialog').addEventListener('cancel',event=>{event.preventDefault();requestJournalClose();});
+$('journal-dialog').addEventListener('click',event=>{if(event.target!==$('journal-dialog'))return;const box=event.target.getBoundingClientRect();if(event.clientX<box.left||event.clientX>box.right||event.clientY<box.top||event.clientY>box.bottom)requestJournalClose();});
+$('journal-stay').onclick=()=>$('journal-unsaved').close();
+$('journal-discard').onclick=closeJournalNow;
+$('journal-save-back').onclick=()=>{$('journal-unsaved').close();saveJournal();};
+window.addEventListener('beforeunload',event=>{if(journalDirty()||journalBusy){event.preventDefault();event.returnValue='';}});
 
 window.addEventListener('resize',schedulePlanLayout);
 if(document.fonts)document.fonts.ready.then(schedulePlanLayout);

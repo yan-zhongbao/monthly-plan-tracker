@@ -80,7 +80,7 @@ try{
   // Validate snapshot using an independent SQLite connection, including migration version.
   const counts=execFileSync(php,[...extensionArgs,'-r',`$d=new PDO('sqlite:' . '${backup.replaceAll('\\','/').replaceAll("'","\\'")}'); echo json_encode([$d->query('SELECT count(*) FROM items')->fetchColumn(),$d->query('SELECT count(*) FROM schema_migrations')->fetchColumn()]);`],{encoding:'utf8'});
   // PDO SQLite 8.0 returns aggregate values as strings; compare numeric counts.
-  equal(JSON.parse(counts).map(Number),[5,5]);
+  equal(JSON.parse(counts).map(Number),[5,6]);
   const discovery=await fetch(`${base}/api.php?action=discovery`);equal(discovery.status,200);
   const spec=await discovery.json();equal(spec.authentication.type,'Bearer');equal(spec.endpoints.some(e=>e.action==='suggestions'),true);
   equal(spec.categories,['成长','健康','家庭','财务','自我实现','社交','娱乐','职业']);
@@ -232,6 +232,29 @@ try{
   equal((await api('copy','POST',{from:'2027-04',to:'2027-05'}))[1].items.map(i=>i.title),[...titlePair,'健康排序测试']);
   equal((await api('review','PATCH',{month:'2026-09',completed:true}))[0],200);
   equal((await api('move','PATCH',{id:previousItem,direction:'up'}))[0],403);
+  // Journal date uniqueness, plaintext round-trip, concurrent writes and permission boundaries.
+  let journalResponse=await api('journals','GET',null,credentials.token1,{date:'2026-10-10'});
+  equal(journalResponse[1].journal,null);equal(journalResponse[1].read_only,false);
+  equal((await api('journals','PUT',{date:'2026-10-10',content:'missing revision'}))[0],400);
+  const journalText='  第一行\n第二行 <script>纯文本</script>  ';
+  journalResponse=await api('journals','PUT',{date:'2026-10-10',content:journalText,revision:0});equal(journalResponse[0],201);equal(journalResponse[1].journal.content,journalText);equal(journalResponse[1].journal.revision,1);
+  equal((await api('journals','PUT',{date:'2026-10-10',content:journalText,revision:0}))[1].unchanged,true);
+  equal((await api('journals','PUT',{date:'2026-10-10',content:'旧版本覆盖',revision:0,force:true}))[0],409);
+  equal((await api('journals','GET',null,credentials.token2,{date:'2026-10-10'}))[1].journal,null);
+  const journalWrite=await fetch(`${base}/api.php?action=journals`,{method:'PUT',headers:{Cookie:sessionCookie,'Content-Type':'application/json','X-CSRF-Token':sessionCsrf},body:JSON.stringify({date:'2026-10-10',content:'手写日记',revision:1})});equal(journalWrite.status,200);equal((await journalWrite.json()).journal.manual_lock,true);
+  journalResponse=await api('journals','PUT',{date:'2026-10-10',content:'自动改写',revision:2});equal(journalResponse[0],409);equal(journalResponse[1].code,'MANUAL_LOCK');
+  equal((await api('journals','PUT',{date:'2026-10-10',content:'明确纠正',revision:2,force:true}))[0],200);
+  equal((await api('month'))[1].journals[0].content,'明确纠正');
+  equal((await api('journals','GET',null,credentials.token1,{month:'2026-10'}))[1].journals.length,1);
+  equal((await api('journals','PUT',{date:'2026-10-10',content:'',revision:3,force:true}))[1].journal.revision,4);
+  equal((await api('journals','GET',null,credentials.token1,{date:'2026-10-10'}))[1].journal.content,'');
+  equal((await api('journals','PUT',{date:'2027-01-01',content:'未来',revision:0}))[0],403);
+  equal((await api('journals','PUT',{date:'2026-08-10',content:'过旧',revision:0}))[0],403);
+  equal((await api('journals','PUT',{date:'2026-09-10',content:'锁定月份',revision:0}))[0],403);
+  equal((await api('journals','PUT',{date:'2026-10-32',content:'无效日期',revision:0}))[0],400);
+  equal((await api('journals','PUT',{date:'2026-10-10',content:'x'.repeat(40001),revision:4}))[0],400);
+  const journalBackup=resolve(folder,'journals-backup.sqlite');execFileSync(php,[...extensionArgs,resolve(root,'scripts/backup.php'),journalBackup],{env});
+  const journalCount=execFileSync(php,[...extensionArgs,'-r',`$d=new PDO('sqlite:' . '${journalBackup.replaceAll('\\','/')}');echo $d->query('SELECT count(*) FROM journals')->fetchColumn();`],{encoding:'utf8'});equal(Number(journalCount),1);
   console.log(`PASS: ${assertions} integration assertions (PHP + SQLite + HTTP + session/CSRF + backup).`);
 }catch(error){console.error(error);console.error(stderr.slice(-3500));process.exitCode=1;}
 finally{server.kill();}

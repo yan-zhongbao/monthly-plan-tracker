@@ -192,7 +192,7 @@ function normalize_record(array $record): array {
 function month_data(int $user, string $month): array {
     $items = array_map('normalize_item', query('SELECT * FROM items WHERE user_id = ? AND month = ? ORDER BY sort_order, id', [$user, $month]));
     $records = array_map('normalize_record', query('SELECT r.* FROM records r JOIN items i ON i.id = r.item_id AND i.user_id = r.user_id WHERE r.user_id = ? AND i.month = ? ORDER BY r.date, r.item_id', [$user, $month]));
-    return ['month' => $month, 'timezone' => config()['timezone'] ?? 'Asia/Shanghai', 'access' => month_access($user, $month), 'items' => $items, 'records' => $records, 'outputs'=>output_rows($user,$month),'output_types'=>output_types(),'legacy_outputs'=>legacy_outputs($items,$records)];
+    return ['month' => $month, 'timezone' => config()['timezone'] ?? 'Asia/Shanghai', 'access' => month_access($user, $month), 'items' => $items, 'records' => $records, 'outputs'=>output_rows($user,$month),'output_types'=>output_types(),'legacy_outputs'=>legacy_outputs($items,$records),'journals'=>journal_rows($user,$month)];
 }
 function month_access(int $user, string $month): array {
     config();
@@ -217,6 +217,7 @@ function audit(int $user, string $action, int $id, string $source, mixed $before
 }
 function categories(): array { return ['成长','健康','家庭','财务','自我实现','社交','娱乐','职业']; }
 require_once __DIR__ . '/outputs.php';
+require_once __DIR__ . '/journals.php';
 function suggestions(int $user, string $month, string $category): array {
     if (!in_array($category, categories(), true)) { fail('请选择八个方面之一。'); }
     $history = query('SELECT title,month AS last_used_month,updated_at AS last_used_at,tracked,target FROM items WHERE user_id=? AND category=? AND month<? ORDER BY month DESC,updated_at DESC,id DESC', [$user,$category,$month]);
