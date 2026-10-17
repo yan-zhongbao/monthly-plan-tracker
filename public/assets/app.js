@@ -386,10 +386,12 @@ function openEvents(date){
   if(loading||data.month!==month)return;
   $('event-date').textContent=date.replaceAll('-',' / ');
   const items=data.items.filter(i=>i.once_only);
-  $('event-list').innerHTML=items.length?items.map(item=>{
+  const done=item=>data.records.some(record=>record.item_id===item.id&&record.completed);
+  const groups=[['未完成',items.filter(item=>!done(item))],['已完成',items.filter(done)]];
+  $('event-list').innerHTML=items.length?groups.filter(([,group])=>group.length).map(([label,group])=>`<h4 class="event-group-title">${label} · ${group.length}</h4>`+group.map(item=>{
     const completed=data.records.find(r=>r.item_id===item.id&&r.completed),onDate=completed?.date===date;
     return `<div class="event-choice"><button data-event-toggle="${item.id}" ${dateReadOnly(date)||completed&&!onDate?'disabled':''}>${markHtml(item)} ${esc(item.title)} <small>${completed?onDate?'✓ 当天已完成':completed.date+' 已完成':date>today?'未来日期只读':'点击完成'}</small></button><button class="quiet" data-event-detail="${item.id}">详情</button></div>`;
-  }).join(''):'<p class="field-help">暂无一次性事件。在月计划中添加项目，记录方式选择“一次性事件”。</p>';
+  }).join('')).join(''):'<p class="field-help">暂无一次性事件。在月计划中添加项目，记录方式选择“一次性事件”。</p>';
   $('event-list').querySelectorAll('[data-event-toggle]').forEach(b=>b.onclick=async()=>{b.disabled=true;await toggleRecord(Number(b.dataset.eventToggle),date);if($('event-dialog').open)openEvents(date);});
   $('event-list').querySelectorAll('[data-event-detail]').forEach(b=>b.onclick=()=>{const id=Number(b.dataset.eventDetail),done=data.records.find(r=>r.item_id===id&&r.completed);$('event-dialog').close();openRecord(id,done?.date??date);});
   if(!$('event-dialog').open)$('event-dialog').showModal();
