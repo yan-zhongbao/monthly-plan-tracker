@@ -468,9 +468,17 @@ function svgText(){
 }
 async function exportMonth(type){
   if(loading||data.month!==month){toast('请先成功读取当月数据，再导出。');return;}
+  if(exportMonth.busy)return;
+  exportMonth.busy=true;
+  const buttons=document.querySelectorAll('[data-export]');buttons.forEach(button=>button.disabled=true);
+  const exportMonthValue=month;
   try{
-    const filename=`${month}-月度计划与追踪`;
-    if(type==='json')download(new Blob([JSON.stringify(data,null,2)],{type:'application/json;charset=utf-8'}),filename+'.json');
+    const filename=`${exportMonthValue}-月度计划与追踪`;
+    if(type==='json'){
+      const backup=await api('export','GET',null,{month:exportMonthValue});
+      download(new Blob([JSON.stringify(backup,null,2)],{type:'application/json;charset=utf-8'}),filename+'-结构化备份.json');
+      toast('本月结构化备份已导出');
+    }
     if(type==='csv')download(new Blob([csvText()],{type:'text/csv;charset=utf-8'}),filename+'.csv');
     if(type==='print'){switchView('tracker');window.print();}
     if(type==='png'){
@@ -483,6 +491,7 @@ async function exportMonth(type){
     }
     $('export-dialog').close();
   }catch(e){toast(e.message);}
+  finally{exportMonth.busy=false;buttons.forEach(button=>button.disabled=false);}
 }
 $('item-category').innerHTML='<option value="" disabled>请选择所属方面</option>'+categories.map(c=>`<option>${c}</option>`).join('');
 $('item-category').onchange=()=>{if(!$('item-id').value)$('item-title').value='';loadSuggestions();};

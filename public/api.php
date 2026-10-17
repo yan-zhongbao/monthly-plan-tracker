@@ -2,6 +2,7 @@
 declare(strict_types=1);
 require dirname(__DIR__) . '/app/bootstrap.php';
 require dirname(__DIR__) . '/app/api-spec.php';
+require dirname(__DIR__) . '/app/month-export.php';
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['action'] ?? '') === 'discovery') { respond(api_spec()); }
 try {
     [$user, $source] = auth();
@@ -12,6 +13,12 @@ try {
     if ($action==='journals') { handle_journals($user,$source,$method); }
     if ($action==='outputs') { handle_outputs($user,$source,$method); }
     if ($method === 'GET') {
+        if ($action==='export') {
+            $month=month_value($_GET['month']??date('Y-m'));
+            $backup=month_backup($user,$month);
+            header('Content-Disposition: attachment; filename="monthly-plan-tracker-'.$month.'.json"');
+            respond($backup);
+        }
         if ($action === 'suggestions') {
             $month = month_value($_GET['month'] ?? date('Y-m'));
             $category = string_value($_GET['category'] ?? '', 20, '所属方面');

@@ -255,6 +255,32 @@ try{
   equal((await api('journals','PUT',{date:'2026-10-10',content:'x'.repeat(40001),revision:4}))[0],400);
   const journalBackup=resolve(folder,'journals-backup.sqlite');execFileSync(php,[...extensionArgs,resolve(root,'scripts/backup.php'),journalBackup],{env});
   const journalCount=execFileSync(php,[...extensionArgs,'-r',`$d=new PDO('sqlite:' . '${journalBackup.replaceAll('\\','/')}');echo $d->query('SELECT count(*) FROM journals')->fetchColumn();`],{encoding:'utf8'});equal(Number(journalCount),1);
+  // Server-generated monthly backup is complete, isolated and read-only.
+  equal((await api('journals','PUT',{date:'2026-10-10',content:'日记备份正文\n保留换行',revision:4,force:true}))[0],200);
+  const archivedForBackup=(await api('outputs','POST',{date:'2026-10-08',type:'article',title:'备份保留的移除输出'}))[1].output;
+  equal((await api('outputs','DELETE',{id:archivedForBackup.id}))[0],200);
+  const beforeBackup=(await api('month'))[1];
+  const backupResponse=await fetch(`${base}/api.php?action=export&month=2026-10`,{headers:{Authorization:`Bearer ${credentials.token1}`}});
+  equal(backupResponse.status,200);equal(backupResponse.headers.get('Content-Disposition').includes('2026-10.json'),true);
+  const monthlyBackup=await backupResponse.json();
+  equal(monthlyBackup.format,'monthly-plan-tracker/month-backup');equal(monthlyBackup.format_version,1);equal(monthlyBackup.month,'2026-10');equal(monthlyBackup.timezone,'Asia/Shanghai');
+  for(const field of ['items','records','journals','outputs','output_types','legacy_outputs','access'])equal(monthlyBackup.data[field],beforeBackup[field]);
+  equal(monthlyBackup.data.journals[0].content,'日记备份正文\n保留换行');
+  equal(monthlyBackup.data.archived_outputs.every(o=>o.archived),true);equal(monthlyBackup.data.archived_outputs.length,1);
+  equal(monthlyBackup.calendar.length,31);equal(monthlyBackup.calendar[3].weekday,7);equal(monthlyBackup.calendar[4].week_start,true);equal(monthlyBackup.calendar[2].weekend,true);
+  equal(monthlyBackup.rendering.item_symbols.length,monthlyBackup.data.items.length);
+  equal(monthlyBackup.data.records.every(r=>monthlyBackup.data.items.some(i=>i.id===r.item_id)),true);
+  equal((await api('month'))[1],beforeBackup);
+  equal((await api('export','GET',null,credentials.token2))[1].data.items.length,0);
+  equal((await api('export','GET',null,credentials.token2))[1].data.journals.length,0);
+  equal((await api('export','GET',null,'bad-token'))[0],401);
+  equal((await api('export','GET',null,credentials.token1,{month:'bad'}))[0],400);
+  equal((await api('export','GET',null,credentials.token1,{month:'2024-02'}))[1].calendar.length,29);
+  const lockedBackup=await api('export','GET',null,credentials.token1,{month:'2026-09'});equal(lockedBackup[0],200);equal(lockedBackup[1].data.month_review.completed,true);
+  const symbolItem=(await api('items','POST',{month:'2027-04',title:'公积金',category:'财务',once_only:true}))[1].item;
+  const symbolBackup=(await api('export','GET',null,credentials.token1,{month:'2027-04'}))[1];
+  const exportedSymbol=symbolBackup.rendering.item_symbols.find(i=>i.item_id===symbolItem.id);equal(exportedSymbol.symbol,'公');equal(exportedSymbol.style,'circled');
+  const exportedText=JSON.stringify(monthlyBackup);equal(exportedText.includes('api_token_hash'),false);equal(exportedText.includes('password_hash'),false);
   console.log(`PASS: ${assertions} integration assertions (PHP + SQLite + HTTP + session/CSRF + backup).`);
 }catch(error){console.error(error);console.error(stderr.slice(-3500));process.exitCode=1;}
 finally{server.kill();}
